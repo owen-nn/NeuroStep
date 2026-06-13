@@ -1,0 +1,27 @@
+# Node / Expo
+node_modules/
+.expo/
+dist/
+web-build/
+
+# Env secrets
+.env
+.env.local
+.env.*.local
+
+# ML training artifacts (large, reproducible — run fog_detector.py to regenerate)
+ml/*.pth
+ml/training_curves.png
+ml/daphnet/
+
+# PlatformIO build output (already covered by firmware/.gitignore, belt-and-suspenders)
+firmware/.pio/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+*.swp
+*.swo

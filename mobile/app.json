@@ -1,0 +1,27 @@
+{
+  "expo": {
+    "name": "NeuroStep",
+    "slug": "neurostep",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "assetBundlePatterns": ["**/*"],
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.neurostep.app",
+      "infoPlist": {
+        "NSBluetoothAlwaysUsageDescription": "NeuroStep connects to your wearable sensor via Bluetooth to detect freezing of gait and deliver vibration cues.",
+        "NSBluetoothPeripheralUsageDescription": "NeuroStep connects to your wearable sensor via Bluetooth to detect freezing of gait and deliver vibration cues."
+      }
+    },
+    "android": {
+      "package": "com.neurostep.app",
+      "permissions": [
+        "BLUETOOTH",
+        "BLUETOOTH_ADMIN",
+        "BLUETOOTH_CONNECT",
+        "BLUETOOTH_SCAN"
+      ]
+    }
+  }
+}
