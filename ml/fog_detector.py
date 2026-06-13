@@ -1,6 +1,6 @@
 # ============================================================
 #  FOG DETECTOR --> Freeze of gait CNN
-#  DAPHNET dataset, ankle sensor only (columns 0,1,2) --> not full datat 
+#  DAPHNET dataset, ankle sensor only
 # ============================================================
 
 import numpy as np
@@ -14,14 +14,14 @@ import torch.nn as nn
 from torch.utils.data import TensorDataset, DataLoader
 
 # Settings
-DATA_FOLDER = "daphnet"   # folder containing  .txt files
-WINDOW_SIZE = 64         # 128 samples @ 64Hz = 2 seconds
-STEP_SIZE   = 32          # 50% overlap b/w windows
-BATCH_SIZE  = 32
-EPOCHS      = 50
+DATA_FOLDER   = "daphnet"
+WINDOW_SIZE   = 64
+STEP_SIZE     = 32
+BATCH_SIZE    = 32
+EPOCHS        = 50
 LEARNING_RATE = 0.0005
 
-# Load ankle columnes
+# Load ankle columns (skip col 0 which is a timestamp)
 def load_daphnet(folder):
     print("Loading data...")
     X_all, y_all = [], []
@@ -35,8 +35,8 @@ def load_daphnet(folder):
 
     for f in files:
         df = pd.read_csv(f, sep=" ", header=None)
-        df = df[df[10] != 0]                          # drop unlabeled rows
-        X_all.append(df.iloc[:, :3].values)            # ankle only: cols 0,1,2
+        df = df[df[10] != 0]                            # drop unlabeled rows
+        X_all.append(df.iloc[:, 1:4].values)            # cols 1,2,3 = ax,ay,az (col 0 is timestamp)
         y_all.append((df[10].values == 2).astype(int))  # 1 = FOG, 0 = normal
 
     X = np.vstack(X_all).astype(np.float32)
@@ -67,7 +67,7 @@ def make_windows(X, y, size=WINDOW_SIZE, step=STEP_SIZE):
     return Xw, yw
 
 
-# normalize
+# Normalize using training set stats
 def normalize(X_train, X_val, X_test):
     mean = X_train.mean(axis=(0, 1), keepdims=True)
     std  = X_train.std(axis=(0, 1), keepdims=True) + 1e-8
@@ -109,7 +109,7 @@ class FOGCNN(nn.Module):
         return self.net(x)
 
 
-# Train
+# Train one epoch
 def train(model, loader, optimizer, loss_fn, device):
     model.train()
     total_loss, correct, total = 0, 0, 0
@@ -126,7 +126,7 @@ def train(model, loader, optimizer, loss_fn, device):
     return total_loss / len(loader), correct / total
 
 
-# Eval
+# Evaluate
 def evaluate(model, loader, loss_fn, device):
     model.eval()
     total_loss, correct, total = 0, 0, 0
@@ -172,11 +172,9 @@ def main():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Using device: {device}\n")
 
-    # Load and window the data
     X, y = load_daphnet(DATA_FOLDER)
     Xw, yw = make_windows(X, y)
 
-    # Split into train / val / test
     X_train, X_temp, y_train, y_temp = train_test_split(
         Xw, yw, test_size=0.3, stratify=yw, random_state=42)
     X_val, X_test, y_val, y_test = train_test_split(
@@ -184,12 +182,16 @@ def main():
 
     print(f"\nSplit: {len(X_train)} train / {len(X_val)} val / {len(X_test)} test\n")
 
-    # Normalize
+    # print normalization values before normalizing — copy these into main.cpp
+    raw_mean = X_train.mean(axis=(0,1))
+    raw_std  = X_train.std(axis=(0,1))
+    print(f"MEAN for ESP32: {raw_mean}")
+    print(f"STD for ESP32:  {raw_std}\n")
+
     X_train, X_val, X_test = normalize(X_train, X_val, X_test)
 
-    # Convert to tensors — shape must be (N, channels, timesteps)
     def to_tensor(X, y):
-        Xt = torch.tensor(X).permute(0, 2, 1)  # (N, 128, 3) → (N, 3, 128)
+        Xt = torch.tensor(X).permute(0, 2, 1)
         yt = torch.tensor(y, dtype=torch.long)
         return TensorDataset(Xt, yt)
 
@@ -197,11 +199,9 @@ def main():
     val_loader   = DataLoader(to_tensor(X_val,   y_val),   batch_size=BATCH_SIZE)
     test_loader  = DataLoader(to_tensor(X_test,  y_test),  batch_size=BATCH_SIZE)
 
-    # Class weights to handle imbalance (FOG is rare)
     counts  = torch.bincount(torch.tensor(y_train))
     weights = (1.0 / counts.float()).to(device)
 
-    # Build model
     model     = FOGCNN().to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=LEARNING_RATE)
     loss_fn   = nn.CrossEntropyLoss(weight=weights)
@@ -223,7 +223,6 @@ def main():
               f"train loss: {tr_loss:.4f}  acc: {tr_acc:.3f}  |  "
               f"val loss: {vl_loss:.4f}  acc: {vl_acc:.3f}")
 
-    # Final test evaluation
     print("\n── Test Results ──────────────────────────")
     _, _, preds, labels = evaluate(model, test_loader, loss_fn, device)
     print(classification_report(labels, preds, target_names=["Normal", "FOG"]))
@@ -234,12 +233,11 @@ def main():
     print(f"  Normal:     {cm[0,0]:5d}  {cm[0,1]:4d}")
     print(f"  FOG:        {cm[1,0]:5d}  {cm[1,1]:4d}")
 
-    # Save model
     torch.save(model.state_dict(), "fog_model.pth")
     print("\nModel saved to fog_model.pth")
 
-    # Plot curves
     plot_history(train_losses, val_losses, train_accs, val_accs)
+
 
 if __name__ == "__main__":
     main()
