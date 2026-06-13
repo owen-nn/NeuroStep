@@ -1,7 +1,7 @@
 // Static fixtures for Phase 1. Keep shapes in sync with backend/models/ so
 // the Phase 2 API swap requires minimal changes.
 
-// ── Historical event log (used by Analytics + api.ts) ───────────────────────
+// ── Historical event log ─────────────────────────────────────────────────────
 
 export interface MockEvent {
   id:             string;
@@ -15,12 +15,12 @@ export interface MockEvent {
 export const MOCK_EVENTS: MockEvent[] = [
   { id: 'e1', type: 'freeze', occurredAt: '2026-06-13T09:14:00Z', durationMs: 4200, fogConfidence: 0.87 },
   { id: 'e2', type: 'freeze', occurredAt: '2026-06-12T16:33:00Z', durationMs: 2800, fogConfidence: 0.79 },
-  { id: 'e3', type: 'fall',   occurredAt: '2026-06-11T11:05:00Z', severity: 'mild' },
+  { id: 'e3', type: 'freeze', occurredAt: '2026-06-11T11:05:00Z', durationMs: 3600, fogConfidence: 0.82 },
   { id: 'e4', type: 'freeze', occurredAt: '2026-06-10T08:50:00Z', durationMs: 6100, fogConfidence: 0.93 },
   { id: 'e5', type: 'freeze', occurredAt: '2026-06-09T14:22:00Z', durationMs: 1900, fogConfidence: 0.71 },
 ];
 
-// ── Medications (used by api.ts) ─────────────────────────────────────────────
+// ── Medications ──────────────────────────────────────────────────────────────
 
 export interface MockMedication {
   id:       string;
@@ -35,13 +35,15 @@ export const MOCK_MEDICATIONS: MockMedication[] = [
   { id: 'm3', name: 'Amantadine',           doseMg: 100, schedule: ['09:00'] },
 ];
 
-// ── Live notification feed (HomeScreen cards) ────────────────────────────────
+// ── Notifications ────────────────────────────────────────────────────────────
+// Categories: medication | freeze | doctor | device
+// Note: 'falls' detection is a future feature — no fall-specific entries yet.
 
-export type NotifType = 'fog' | 'fall' | 'medication' | 'battery';
+export type NotifCategory = 'medication' | 'freeze' | 'doctor' | 'device';
 
 export interface MockNotification {
   id:         string;
-  type:       NotifType;
+  category:   NotifCategory;
   title:      string;
   body:       string;
   occurredAt: string;
@@ -49,27 +51,33 @@ export interface MockNotification {
 
 export const MOCK_NOTIFICATIONS: MockNotification[] = [
   {
-    id: 'n1', type: 'medication',
-    title: 'Levodopa / Carbidopa',
-    body: 'Next dose due at 13:00 — 100 mg',
-    occurredAt: '2026-06-13T12:45:00Z',
-  },
-  {
-    id: 'n2', type: 'fog',
-    title: 'Freeze Detected Earlier',
-    body: '4.2 s episode at 09:14 — vibration cue delivered',
+    id: 'n1', category: 'freeze',
+    title: 'Freeze Episode Detected',
+    body: '4.2 s episode at 09:14 — vibration cue delivered, episode resolved',
     occurredAt: '2026-06-13T09:14:00Z',
   },
   {
-    id: 'n3', type: 'battery',
+    id: 'n2', category: 'medication',
+    title: 'Levodopa / Carbidopa Due',
+    body: 'Next dose: 1:00 PM — 100 mg. Take with food.',
+    occurredAt: '2026-06-13T12:45:00Z',
+  },
+  {
+    id: 'n3', category: 'device',
     title: 'Ankle Sensor Battery Low',
-    body: 'Ankle sensor at 15% — please charge before next walk',
+    body: 'Ankle sensor at 15% — please charge before your next walk.',
     occurredAt: '2026-06-13T08:00:00Z',
   },
   {
-    id: 'n4', type: 'medication',
-    title: 'Pramipexole',
-    body: 'Morning dose due at 08:00 — 0.5 mg',
+    id: 'n4', category: 'doctor',
+    title: 'Message from Dr. Johnson',
+    body: 'Your weekly gait report has been reviewed. Freeze duration trending down — great progress.',
+    occurredAt: '2026-06-12T14:30:00Z',
+  },
+  {
+    id: 'n5', category: 'medication',
+    title: 'Pramipexole Due',
+    body: 'Morning dose: 8:00 AM — 0.5 mg.',
     occurredAt: '2026-06-13T07:45:00Z',
   },
 ];
@@ -95,11 +103,11 @@ export const MOCK_TIME_OF_DAY: TimeOfDay[] = [
   { period: 'Evening',   count: 3 },
 ];
 
-// ── Device / system stats (seed for AppStateContext) ────────────────────────
+// ── Device / system stats ────────────────────────────────────────────────────
 
 export const MOCK_STATS = {
-  avgFreezeDuration: 3.2,  // seconds, shown in bottom dock left half
-  ankleBattery:      85,   // percent
-  hubBattery:        90,   // percent
-  bleConnected:      false, // Phase 3: driven by useBLE()
+  avgFreezeDuration: 3.2,
+  ankleBattery:      85,
+  hubBattery:        90,
+  bleConnected:      true,  // Phase 3: driven by useBLE()
 };

@@ -1,22 +1,24 @@
-// DEV MODE bar — visible only in Expo development builds (__DEV__ === true).
+// DEV MODE bar — visible only in __DEV__ builds.
 // Lets hackathon judges trigger system states without real hardware.
 // Phase 3: remove this entirely; real states come from useBLE().
 
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { useAppState } from '../context/AppStateContext';
+import { useColors }  from '../context/ThemeContext';
 
 export default function DevToggle() {
   const { systemState, setSystemState } = useAppState();
+  const C = useColors();
 
   if (!__DEV__) return null;
 
   return (
-    <View style={styles.bar}>
-      <Text style={styles.devLabel}>⚡ DEV MODE</Text>
+    <View style={[styles.bar, { backgroundColor: '#05090D', borderTopColor: C.border }]}>
+      <Text style={[styles.devLabel, { color: C.yellow }]}>DEV</Text>
       <View style={styles.buttons}>
         <TouchableOpacity
-          style={[styles.btn, styles.btnFreeze, systemState === 'freeze' && styles.btnActive]}
+          style={[styles.btn, { backgroundColor: C.teal }, systemState === 'freeze' && styles.btnActive]}
           onPress={() => setSystemState('freeze')}
           activeOpacity={0.7}
         >
@@ -24,7 +26,7 @@ export default function DevToggle() {
         </TouchableOpacity>
 
         <TouchableOpacity
-          style={[styles.btn, styles.btnFall, systemState === 'fall' && styles.btnActive]}
+          style={[styles.btn, { backgroundColor: C.clay }, systemState === 'fall' && styles.btnActive]}
           onPress={() => setSystemState('fall')}
           activeOpacity={0.7}
         >
@@ -32,7 +34,7 @@ export default function DevToggle() {
         </TouchableOpacity>
 
         <TouchableOpacity
-          style={[styles.btn, styles.btnClear, systemState === 'normal' && styles.btnActive]}
+          style={[styles.btn, { backgroundColor: C.sage }, systemState === 'normal' && styles.btnActive]}
           onPress={() => setSystemState('normal')}
           activeOpacity={0.7}
         >
@@ -45,47 +47,36 @@ export default function DevToggle() {
 
 const styles = StyleSheet.create({
   bar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#0D1117',
+    flexDirection:     'row',
+    alignItems:        'center',
     paddingHorizontal: 14,
-    paddingVertical: 10,
-    gap: 10,
+    paddingVertical:   10,
+    gap:               10,
+    borderTopWidth:     1,
   },
   devLabel: {
-    color: '#F0B429',
-    fontWeight: '700',
-    fontSize: 12,
-    letterSpacing: 0.5,
-    minWidth: 72,
+    fontWeight:   '700',
+    fontSize:     11,
+    letterSpacing: 0.8,
+    minWidth:      28,
   },
   buttons: {
-    flex: 1,
+    flex:          1,
     flexDirection: 'row',
-    gap: 8,
+    gap:            8,
   },
   btn: {
-    flex: 1,
+    flex:           1,
     paddingVertical: 10,
-    borderRadius: 8,
-    alignItems: 'center',
-    opacity: 0.75,
+    borderRadius:   8,
+    alignItems:     'center',
+    opacity:        0.7,
   },
-  btnActive: {
-    opacity: 1,
-    shadowColor: '#fff',
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.3,
-    shadowRadius: 6,
-    elevation: 4,
-  },
-  btnFreeze: { backgroundColor: '#0A84FF' },
-  btnFall:   { backgroundColor: '#FF3B30' },
-  btnClear:  { backgroundColor: '#30D158' },
+  btnActive: { opacity: 1 },
   btnLabel: {
-    color: '#fff',
-    fontWeight: '800',
-    fontSize: 13,
+    color:        '#FFFFFF',
+    fontWeight:   '800',
+    fontSize:     12,
     letterSpacing: 0.5,
   },
 });

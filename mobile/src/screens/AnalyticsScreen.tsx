@@ -3,6 +3,8 @@ import {
   View, Text, ScrollView, TouchableOpacity, Alert, StyleSheet,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { X, FileText, TrendingDown } from 'lucide-react-native';
+import { useColors } from '../context/ThemeContext';
 
 import {
   MOCK_WEEKLY_FREEZES,
@@ -11,74 +13,94 @@ import {
   type TimeOfDay,
 } from '../constants/mockData';
 
-const CHART_HEIGHT = 110; // px — height of the bar area
+const CHART_HEIGHT = 110;
+
+const TOD_RANGE: Record<string, string> = {
+  Morning:   '6am – Noon',
+  Afternoon: 'Noon – 6pm',
+  Evening:   '6pm – 12am',
+};
 
 type Props = { onClose: () => void };
 
 export default function AnalyticsScreen({ onClose }: Props) {
-  const maxCount  = Math.max(...MOCK_WEEKLY_FREEZES.map((d) => d.count));
-  const todTotal  = MOCK_TIME_OF_DAY.reduce((s, d) => s + d.count, 0);
+  const C = useColors();
+  const maxCount = Math.max(...MOCK_WEEKLY_FREEZES.map((d) => d.count));
+  const todTotal = MOCK_TIME_OF_DAY.reduce((s, d) => s + d.count, 0);
 
   const handleSendReport = () =>
-    Alert.alert('Send Report', 'Doctor report delivery will be available in Phase 2 when the backend is live.', [{ text: 'OK' }]);
+    Alert.alert('Send Report', 'Doctor report delivery available in Phase 2.', [{ text: 'OK' }]);
 
   return (
-    <SafeAreaView style={styles.screen} edges={['top']}>
-      {/* ── Close button ────────────────────────────────────── */}
-      <TouchableOpacity style={styles.closeBtn} onPress={onClose} activeOpacity={0.7}>
-        <Text style={styles.closeBtnLabel}>✕   Close Analytics</Text>
+    <SafeAreaView style={[s.screen, { backgroundColor: C.bg }]} edges={['bottom']}>
+      <TouchableOpacity
+        style={[s.closeBtn, { backgroundColor: C.surface, borderBottomColor: C.border }]}
+        onPress={onClose}
+        activeOpacity={0.7}
+      >
+        <X size={20} color={C.textPrimary} />
+        <Text style={[s.closeBtnLabel, { color: C.textPrimary }]}>Close Analytics</Text>
       </TouchableOpacity>
 
-      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-        {/* Positive headline */}
-        <View style={styles.headlineCard}>
-          <Text style={styles.headlineEmoji}>🎉</Text>
-          <Text style={styles.headline}>Your freezes are{'\n'}1.5 s shorter this week!</Text>
-          <Text style={styles.headlineSub}>Keep up the great work</Text>
+      <ScrollView contentContainerStyle={s.content} showsVerticalScrollIndicator={false}>
+
+        {/* Insights banner */}
+        <View style={[s.headlineCard, { backgroundColor: C.surface, borderLeftColor: C.sage }]}>
+          <TrendingDown size={36} color={C.sage} />
+          <Text style={[s.headline, { color: C.textPrimary }]}>Freeze duration down 1.5s this week</Text>
+          <Text style={[s.headlineSub, { color: C.textSecondary }]}>Keep up the great work</Text>
         </View>
 
-        {/* ── Weekly bar chart ──────────────────────────────── */}
-        <Text style={styles.sectionTitle}>FREEZES THIS WEEK</Text>
-        <View style={styles.chartCard}>
-          <View style={styles.chart}>
+        {/* Weekly bar chart */}
+        <Text style={[s.sectionTitle, { color: C.textMuted }]}>FREEZES THIS WEEK</Text>
+        <View style={[s.chartCard, { backgroundColor: C.surface }]}>
+          <View style={[s.chart, { height: CHART_HEIGHT + 44 }]}>
             {MOCK_WEEKLY_FREEZES.map((d: WeeklyFreeze) => {
               const barH = maxCount > 0 ? (d.count / maxCount) * CHART_HEIGHT : 0;
               return (
-                <View key={d.day} style={styles.barGroup}>
-                  {/* Count label above bar */}
-                  <Text style={styles.barCount}>{d.count}</Text>
-                  {/* Bar anchored to bottom of chart area */}
-                  <View style={styles.barTrack}>
-                    <View style={[styles.bar, { height: barH }]} />
+                <View key={d.day} style={s.barGroup}>
+                  <Text style={[s.barCount, { color: C.textSecondary }]}>{d.count}</Text>
+                  <View style={[s.barTrack, { height: CHART_HEIGHT }]}>
+                    <View style={[s.bar, { height: barH, backgroundColor: C.sage }]} />
                   </View>
-                  <Text style={styles.barDay}>{d.day}</Text>
+                  <Text style={[s.barDay, { color: C.textMuted }]}>{d.day}</Text>
                 </View>
               );
             })}
           </View>
         </View>
 
-        {/* ── Time-of-day distribution ─────────────────────── */}
-        <Text style={styles.sectionTitle}>TIME OF DAY</Text>
-        <View style={styles.todCard}>
+        {/* Time of day */}
+        <Text style={[s.sectionTitle, { color: C.textMuted }]}>FREEZE PATTERN BY TIME OF DAY</Text>
+        <View style={[s.todCard, { backgroundColor: C.surface }]}>
+          <Text style={[s.todNote, { color: C.textMuted }]}>
+            Freeze frequency often peaks when medication is wearing off — typically in the morning.
+          </Text>
           {MOCK_TIME_OF_DAY.map((d: TimeOfDay) => {
             const pct = todTotal > 0 ? d.count / todTotal : 0;
             return (
-              <View key={d.period} style={styles.todRow}>
-                <Text style={styles.todPeriod}>{d.period}</Text>
-                <View style={styles.todTrack}>
-                  <View style={[styles.todFill, { flex: pct }]} />
+              <View key={d.period} style={s.todRow}>
+                <View style={s.todLabelCol}>
+                  <Text style={[s.todPeriod, { color: C.textPrimary }]}>{d.period}</Text>
+                  <Text style={[s.todRange, { color: C.textMuted }]}>{TOD_RANGE[d.period] ?? ''}</Text>
+                </View>
+                <View style={[s.todTrack, { backgroundColor: C.surfaceRaised }]}>
+                  <View style={[s.todFill, { flex: pct, backgroundColor: C.amber }]} />
                   <View style={{ flex: 1 - pct }} />
                 </View>
-                <Text style={styles.todCount}>{d.count}</Text>
+                <Text style={[s.todCount, { color: C.textPrimary }]}>{d.count}</Text>
               </View>
             );
           })}
         </View>
 
-        {/* Send report button */}
-        <TouchableOpacity style={styles.reportBtn} onPress={handleSendReport} activeOpacity={0.8}>
-          <Text style={styles.reportBtnLabel}>📄  Send Report to Doctor</Text>
+        <TouchableOpacity
+          style={[s.reportBtn, { backgroundColor: C.sage }]}
+          onPress={handleSendReport}
+          activeOpacity={0.8}
+        >
+          <FileText size={20} color="#FFFFFF" />
+          <Text style={s.reportBtnLabel}>Send Report to Doctor</Text>
         </TouchableOpacity>
 
         <View style={{ height: 24 }} />
@@ -87,169 +109,68 @@ export default function AnalyticsScreen({ onClose }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
-  screen: {
-    flex: 1,
-    backgroundColor: '#F2F2F7',
-  },
-
-  /* Close */
+const s = StyleSheet.create({
+  screen:   { flex: 1 },
   closeBtn: {
-    backgroundColor: '#1C1C1E',
-    paddingVertical: 18,
-    alignItems: 'center',
-    justifyContent: 'center',
+    flexDirection:     'row',
+    alignItems:        'center',
+    justifyContent:    'center',
+    paddingVertical:   16,
+    gap:               10,
+    borderBottomWidth: 1,
   },
-  closeBtnLabel: {
-    color: '#FFFFFF',
-    fontSize: 18,
-    fontWeight: '700',
-  },
+  closeBtnLabel: { fontSize: 16, fontWeight: '700' },
+  content:       { paddingHorizontal: 16, paddingTop: 20 },
 
-  content: {
-    paddingHorizontal: 16,
-    paddingTop: 20,
-  },
-
-  /* Headline */
   headlineCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 20,
-    padding: 28,
-    alignItems: 'center',
-    marginBottom: 24,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.07,
-    shadowRadius: 6,
-    elevation: 3,
+    borderRadius:   20,
+    padding:        28,
+    alignItems:     'center',
+    marginBottom:   24,
+    gap:            10,
+    borderLeftWidth: 4,
   },
-  headlineEmoji: {
-    fontSize: 44,
-    marginBottom: 10,
-  },
-  headline: {
-    fontSize: 22,
-    fontWeight: '800',
-    color: '#1C1C1E',
-    textAlign: 'center',
-    lineHeight: 30,
-  },
-  headlineSub: {
-    fontSize: 15,
-    color: '#6C6C70',
-    marginTop: 6,
-  },
+  headline:    { fontSize: 20, fontWeight: '800', textAlign: 'center', lineHeight: 28 },
+  headlineSub: { fontSize: 14 },
 
-  /* Section title */
   sectionTitle: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#6C6C70',
-    letterSpacing: 0.8,
+    fontSize:     11,
+    fontWeight:   '700',
+    letterSpacing: 1,
     marginBottom: 10,
-    marginLeft: 4,
+    marginLeft:    4,
   },
+  chartCard: { borderRadius: 16, padding: 20, marginBottom: 24 },
+  chart:     { flexDirection: 'row', alignItems: 'flex-end' },
+  barGroup:  { flex: 1, alignItems: 'center' },
+  barCount:  { fontSize: 12, fontWeight: '700', marginBottom: 4 },
+  barTrack:  { justifyContent: 'flex-end', width: '70%' },
+  bar:       { borderRadius: 5, width: '100%' },
+  barDay:    { fontSize: 11, marginTop: 6, fontWeight: '500' },
 
-  /* Bar chart */
-  chartCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 16,
-    padding: 20,
-    marginBottom: 24,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.06,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-  chart: {
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    height: CHART_HEIGHT + 44, // chart area + count label + day label
-  },
-  barGroup: {
-    flex: 1,
-    alignItems: 'center',
-  },
-  barCount: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#1C1C1E',
-    marginBottom: 4,
-  },
-  barTrack: {
-    height: CHART_HEIGHT,
-    justifyContent: 'flex-end',
-    width: '70%',
-  },
-  bar: {
-    backgroundColor: '#007AFF',
-    borderRadius: 5,
-    width: '100%',
-  },
-  barDay: {
-    fontSize: 12,
-    color: '#6C6C70',
-    marginTop: 6,
-    fontWeight: '500',
-  },
-
-  /* Time of day */
-  todCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 16,
-    padding: 20,
-    marginBottom: 28,
-    gap: 14,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.06,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-  todRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-  },
-  todPeriod: {
-    width: 90,
-    fontSize: 15,
-    fontWeight: '600',
-    color: '#1C1C1E',
-  },
+  todCard: { borderRadius: 16, padding: 20, marginBottom: 28, gap: 14 },
+  todNote: { fontSize: 12, lineHeight: 17, marginBottom: 16, fontStyle: 'italic' },
+  todRow:  { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  todLabelCol: { width: 94 },
+  todPeriod:   { fontSize: 14, fontWeight: '600' },
+  todRange:    { fontSize: 10, marginTop: 1 },
   todTrack: {
-    flex: 1,
-    height: 22,
-    backgroundColor: '#F2F2F7',
+    flex:         1,
+    height:       20,
     borderRadius: 6,
     flexDirection: 'row',
-    overflow: 'hidden',
+    overflow:     'hidden',
   },
-  todFill: {
-    backgroundColor: '#FF9500',
-    borderRadius: 6,
-  },
-  todCount: {
-    width: 24,
-    fontSize: 15,
-    fontWeight: '700',
-    color: '#1C1C1E',
-    textAlign: 'right',
-  },
+  todFill:  { borderRadius: 6 },
+  todCount: { width: 22, fontSize: 14, fontWeight: '700', textAlign: 'right' },
 
-  /* Report button */
   reportBtn: {
-    backgroundColor: '#007AFF',
-    borderRadius: 16,
-    paddingVertical: 20,
-    alignItems: 'center',
+    flexDirection:  'row',
+    alignItems:     'center',
     justifyContent: 'center',
+    borderRadius:   16,
+    paddingVertical: 18,
+    gap:            10,
   },
-  reportBtnLabel: {
-    color: '#FFFFFF',
-    fontSize: 18,
-    fontWeight: '700',
-  },
+  reportBtnLabel: { color: '#FFFFFF', fontSize: 17, fontWeight: '700' },
 });

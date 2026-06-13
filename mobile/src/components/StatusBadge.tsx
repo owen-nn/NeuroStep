@@ -1,67 +1,61 @@
-import React, { useEffect, useRef } from 'react';
-import { Animated, Text, StyleSheet } from 'react-native';
-import type { SystemState } from '../context/AppStateContext';
+import React from 'react';
+import { View, Text, StyleSheet } from 'react-native';
+import { ShieldCheck } from 'lucide-react-native';
+import { useColors } from '../context/ThemeContext';
 
-type Props = { state: SystemState };
+type Props = {
+  bleConnected: boolean;
+};
 
-const CFG = {
-  normal: { color: '#00C853', label: 'SYSTEM ACTIVE',  sub: 'Walking Smoothly' },
-  freeze: { color: '#FF3B30', label: '⚠  FREEZE DETECTED', sub: 'Vibration cue delivered' },
-  fall:   { color: '#FF3B30', label: '⚠  FALL DETECTED',   sub: 'Emergency alert sent' },
-} as const;
-
-export default function StatusBadge({ state }: Props) {
-  const pulse = useRef(new Animated.Value(1)).current;
-  const isAlert = state !== 'normal';
-
-  useEffect(() => {
-    if (!isAlert) {
-      pulse.setValue(1);
-      return;
-    }
-    const anim = Animated.loop(
-      Animated.sequence([
-        Animated.timing(pulse, { toValue: 0.5, duration: 550, useNativeDriver: true }),
-        Animated.timing(pulse, { toValue: 1.0, duration: 550, useNativeDriver: true }),
-      ])
-    );
-    anim.start();
-    return () => anim.stop();
-  }, [isAlert]);
-
-  const { color, label, sub } = CFG[state];
+export default function StatusBadge({ bleConnected }: Props) {
+  const C = useColors();
 
   return (
-    <Animated.View style={[styles.badge, { backgroundColor: color, opacity: pulse }]}>
-      <Text style={styles.label}>{label}</Text>
-      <Text style={styles.sub}>{sub}</Text>
-    </Animated.View>
+    <View style={[s.card, { backgroundColor: C.surface, borderLeftColor: C.sage, marginVertical: 12 }]}>
+      <View style={[s.iconCol, { backgroundColor: C.sage + '22' }]}>
+        <ShieldCheck size={30} color={C.sage} />
+      </View>
+      <View style={s.textCol}>
+        <Text style={[s.label, { color: C.textPrimary }]}>SYSTEM ACTIVE</Text>
+        <Text style={[s.sub, { color: C.textSecondary }]}>Walking Smoothly</Text>
+        <Text style={[s.connection, { color: bleConnected ? C.sage : C.textMuted }]}>
+          {bleConnected ? '● Ankle & Hub Connected' : '○ No device connected'}
+        </Text>
+      </View>
+    </View>
   );
 }
 
-const styles = StyleSheet.create({
-  badge: {
-    borderRadius: 20,
-    marginHorizontal: 0,
-    marginVertical: 12,
-    paddingVertical: 36,
-    paddingHorizontal: 24,
-    alignItems: 'center',
-    justifyContent: 'center',
-    minHeight: 150,
+const s = StyleSheet.create({
+  card: {
+    flexDirection:   'row',
+    borderRadius:    16,
+    borderLeftWidth: 5,
+    overflow:        'hidden',
+  },
+  iconCol: {
+    width:           64,
+    alignItems:      'center',
+    justifyContent:  'center',
+    paddingVertical: 20,
+  },
+  textCol: {
+    flex:    1,
+    padding: 18,
+    gap:     4,
   },
   label: {
-    fontSize: 26,
-    fontWeight: '900',
-    color: '#fff',
-    textAlign: 'center',
-    letterSpacing: 0.5,
+    fontSize:    13,
+    fontWeight:  '800',
+    letterSpacing: 0.6,
   },
   sub: {
-    fontSize: 16,
+    fontSize:   14,
     fontWeight: '500',
-    color: 'rgba(255,255,255,0.85)',
-    marginTop: 8,
-    textAlign: 'center',
+  },
+  connection: {
+    fontSize:   12,
+    fontWeight: '600',
+    marginTop:   2,
   },
 });

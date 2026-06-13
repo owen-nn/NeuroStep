@@ -3,102 +3,162 @@ import {
   View, Text, ScrollView, TouchableOpacity, StyleSheet,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { Settings } from 'lucide-react-native';
 
-import { useAppState }    from '../context/AppStateContext';
-import StatusBadge        from '../components/StatusBadge';
-import NotificationCard   from '../components/NotificationCard';
-import BottomDock         from '../components/BottomDock';
-import DevToggle          from '../components/DevToggle';
-import { MOCK_NOTIFICATIONS, type MockNotification } from '../constants/mockData';
+import { useAppState }   from '../context/AppStateContext';
+import { useColors }     from '../context/ThemeContext';
+import StatusBadge       from '../components/StatusBadge';
+import NotificationCard  from '../components/NotificationCard';
+import BottomDock        from '../components/BottomDock';
+import DevToggle         from '../components/DevToggle';
+import { MOCK_NOTIFICATIONS, type MockNotification, type NotifCategory } from '../constants/mockData';
 
 type Props = {
   onOpenAnalytics: () => void;
   onOpenDevices:   () => void;
+  onOpenSettings:  () => void;
 };
 
-export default function HomeScreen({ onOpenAnalytics, onOpenDevices }: Props) {
-  const { systemState, bleConnected, ankleBattery, hubBattery, avgFreezeDuration } = useAppState();
+type FilterTab = NotifCategory | 'all';
+const FILTER_TABS: { key: FilterTab; label: string }[] = [
+  { key: 'all',        label: 'All' },
+  { key: 'medication', label: 'Medication' },
+  { key: 'freeze',     label: 'Freezes' },
+  { key: 'doctor',     label: 'Doctor' },
+  { key: 'device',     label: 'Device' },
+];
 
-  const [notifications, setNotifications] = useState<MockNotification[]>(MOCK_NOTIFICATIONS);
-  const [showArchive, setShowArchive] = useState(false);
+export default function HomeScreen({ onOpenAnalytics, onOpenDevices, onOpenSettings }: Props) {
+  const { bleConnected } = useAppState();
+  const C = useColors();
 
-  // IDs of cards the user has dismissed or snoozed
-  const [dismissed, setDismissed] = useState<Set<string>>(new Set());
-  const [snoozed,   setSnoozed]   = useState<Set<string>>(new Set());
+  const [notifications] = useState<MockNotification[]>(MOCK_NOTIFICATIONS);
+  // All notifications start unread; medication/doctor are "actionable"
+  const [unreadIds,  setUnreadIds]  = useState<Set<string>>(() => new Set(MOCK_NOTIFICATIONS.map((n) => n.id)));
+  const [doneIds,    setDoneIds]    = useState<Set<string>>(new Set());
+  const [deletedIds, setDeletedIds] = useState<Set<string>>(new Set());
+  const [activeFilter, setFilter]   = useState<FilterTab>('all');
 
-  const active   = notifications.filter((n) => !dismissed.has(n.id) && !snoozed.has(n.id));
-  const archived = notifications.filter((n) => dismissed.has(n.id) || snoozed.has(n.id));
+  const handleMarkUnread = (id: string) =>
+    setUnreadIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);  // toggle: if unread → mark read
+      else              next.add(id);     // if read → mark unread
+      return next;
+    });
 
-  const handleMarkRead = (id: string) => setDismissed((prev) => new Set([...prev, id]));
-  const handleSnooze   = (id: string) => setSnoozed((prev)   => new Set([...prev, id]));
+  const handleMarkDone = (id: string) => {
+    setDoneIds((prev) => new Set([...prev, id]));
+    setUnreadIds((prev) => { const s = new Set(prev); s.delete(id); return s; });
+  };
 
-  const btIcon = bleConnected ? '🔵' : '◯';
+  const handleDelete = (id: string) =>
+    setDeletedIds((prev) => new Set([...prev, id]));
+
+  const visible = notifications.filter((n) => {
+    if (deletedIds.has(n.id)) return false;
+    if (activeFilter === 'all') return true;
+    return n.category === activeFilter;
+  });
+
+  // Count unread per category for filter badges
+  const counts = notifications.reduce<Record<FilterTab, number>>(
+    (acc, n) => {
+      if (!deletedIds.has(n.id) && unreadIds.has(n.id) && !doneIds.has(n.id)) {
+        acc.all += 1;
+        acc[n.category] = (acc[n.category] ?? 0) + 1;
+      }
+      return acc;
+    },
+    { all: 0, medication: 0, freeze: 0, doctor: 0, device: 0 }
+  );
 
   return (
-    <SafeAreaView style={styles.screen} edges={['top']}>
-      {/* ── Top bar ───────────────────────────────────────────── */}
-      <View style={styles.topBar}>
-        <Text style={styles.appName}>NeuroStep</Text>
-        <View style={styles.topRight}>
-          <Text style={styles.btIcon}>{btIcon}</Text>
-          <Text style={styles.batteryText}>
-            Ankle {ankleBattery}%  ·  Hub {hubBattery}%
-          </Text>
-        </View>
+    <SafeAreaView style={[styles.screen, { backgroundColor: C.bg }]} edges={['top']}>
+
+      {/* ── Header ─────────────────────────────────────────────── */}
+      <View style={[styles.header, { backgroundColor: C.surface, borderBottomColor: C.border }]}>
+        <Text style={[styles.appName, { color: C.textPrimary }]}>NeuroStep</Text>
+        <TouchableOpacity
+          style={styles.settingsBtn}
+          onPress={onOpenSettings}
+          activeOpacity={0.7}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+        >
+          <Settings size={22} color={C.textSecondary} />
+        </TouchableOpacity>
       </View>
 
-      {/* ── Scrollable content ────────────────────────────────── */}
+      {/* ── Scrollable content ─────────────────────────────────── */}
       <ScrollView
         style={styles.scroll}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
-        <StatusBadge state={systemState} />
+        <StatusBadge bleConnected={bleConnected} />
 
-        {/* Active notification cards */}
-        {active.length === 0 && (
+        {/* Filter pills */}
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.filterRow}
+          style={styles.filterScroll}
+        >
+          {FILTER_TABS.map(({ key, label }) => {
+            const count = counts[key];
+            const isActive = activeFilter === key;
+            return (
+              <TouchableOpacity
+                key={key}
+                style={[
+                  styles.filterPill,
+                  { backgroundColor: isActive ? C.sage : C.surfaceRaised },
+                ]}
+                onPress={() => setFilter(key)}
+                activeOpacity={0.75}
+              >
+                <Text style={[styles.filterLabel, { color: isActive ? '#FFFFFF' : C.textSecondary }]}>
+                  {label}
+                </Text>
+                {count > 0 && (
+                  <View style={[
+                    styles.countBadge,
+                    { backgroundColor: isActive ? 'rgba(255,255,255,0.25)' : C.border },
+                  ]}>
+                    <Text style={[styles.countText, { color: isActive ? '#FFFFFF' : C.textMuted }]}>
+                      {count}
+                    </Text>
+                  </View>
+                )}
+              </TouchableOpacity>
+            );
+          })}
+        </ScrollView>
+
+        {/* Notifications */}
+        {visible.length === 0 && (
           <View style={styles.emptyState}>
-            <Text style={styles.emptyIcon}>✅</Text>
-            <Text style={styles.emptyText}>No active alerts — you're doing great!</Text>
+            <Text style={[styles.emptyText, { color: C.textMuted }]}>No alerts in this category</Text>
           </View>
         )}
-        {active.map((n) => (
+        {visible.map((n) => (
           <NotificationCard
             key={n.id}
             {...n}
-            onMarkRead={handleMarkRead}
-            onSnooze={handleSnooze}
+            isUnread={unreadIds.has(n.id)}
+            isDone={doneIds.has(n.id)}
+            onMarkUnread={handleMarkUnread}
+            onMarkDone={handleMarkDone}
+            onDelete={handleDelete}
           />
         ))}
 
-        {/* Archive / history button */}
-        <TouchableOpacity
-          style={styles.archiveBtn}
-          onPress={() => setShowArchive((v) => !v)}
-          activeOpacity={0.7}
-        >
-          <Text style={styles.archiveBtnLabel}>
-            {showArchive ? '▲  Hide History' : '▼  View History / Old Notifications'}
-            {archived.length > 0 ? `  (${archived.length})` : ''}
-          </Text>
-        </TouchableOpacity>
-
-        {showArchive && archived.map((n) => (
-          <View key={n.id} style={styles.archivedCard}>
-            <Text style={styles.archivedTitle}>{n.title}</Text>
-            <Text style={styles.archivedBody}>{n.body}</Text>
-          </View>
-        ))}
-
-        <View style={styles.scrollBottomPad} />
+        <View style={styles.scrollPad} />
       </ScrollView>
 
-      {/* ── Fixed bottom: dock + DEV bar ──────────────────────── */}
+      {/* ── Fixed bottom ──────────────────────────────────────── */}
       <BottomDock
-        avgFreezeDuration={avgFreezeDuration}
         bleConnected={bleConnected}
-        ankleBattery={ankleBattery}
-        hubBattery={hubBattery}
         onPressAnalytics={onOpenAnalytics}
         onPressDevices={onOpenDevices}
       />
@@ -108,105 +168,47 @@ export default function HomeScreen({ onOpenAnalytics, onOpenDevices }: Props) {
 }
 
 const styles = StyleSheet.create({
-  screen: {
-    flex: 1,
-    backgroundColor: '#F2F2F7',
-  },
+  screen: { flex: 1 },
 
-  /* Top bar */
-  topBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+  header: {
+    flexDirection:     'row',
+    alignItems:        'center',
     paddingHorizontal: 20,
-    paddingVertical: 14,
-    backgroundColor: '#FFFFFF',
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: '#C6C6C8',
+    paddingVertical:   14,
+    borderBottomWidth: 1,
   },
   appName: {
-    fontSize: 24,
-    fontWeight: '800',
-    color: '#1C1C1E',
+    flex:          1,
+    fontSize:      20,
+    fontWeight:    '800',
     letterSpacing: -0.3,
   },
-  topRight: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  btIcon: {
-    fontSize: 16,
-  },
-  batteryText: {
-    fontSize: 12,
-    color: '#6C6C70',
-    fontWeight: '500',
-  },
+  settingsBtn: { padding: 4 },
 
-  /* Scroll area */
-  scroll: {
-    flex: 1,
-  },
-  scrollContent: {
-    paddingHorizontal: 16,
-    paddingTop: 8,
-  },
-  scrollBottomPad: {
-    height: 12,
-  },
+  scroll:        { flex: 1 },
+  scrollContent: { paddingHorizontal: 16, paddingTop: 8 },
+  scrollPad:     { height: 12 },
 
-  /* Empty state */
-  emptyState: {
-    alignItems: 'center',
-    paddingVertical: 32,
+  filterScroll: { marginBottom: 10 },
+  filterRow:    { gap: 8, paddingRight: 4 },
+  filterPill: {
+    flexDirection:    'row',
+    alignItems:       'center',
+    borderRadius:     20,
+    paddingHorizontal: 14,
+    paddingVertical:   7,
+    gap:               6,
   },
-  emptyIcon: {
-    fontSize: 40,
-    marginBottom: 10,
+  filterLabel: { fontSize: 13, fontWeight: '600' },
+  countBadge: {
+    borderRadius:     8,
+    paddingHorizontal: 5,
+    paddingVertical:   1,
+    minWidth:          18,
+    alignItems:        'center',
   },
-  emptyText: {
-    fontSize: 17,
-    color: '#6C6C70',
-    textAlign: 'center',
-  },
+  countText: { fontSize: 10, fontWeight: '700' },
 
-  /* Archive button */
-  archiveBtn: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 14,
-    paddingVertical: 16,
-    paddingHorizontal: 20,
-    alignItems: 'center',
-    marginTop: 4,
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: '#C6C6C8',
-  },
-  archiveBtnLabel: {
-    fontSize: 15,
-    color: '#007AFF',
-    fontWeight: '600',
-  },
-
-  /* Archived card (dimmed, no actions) */
-  archivedCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    padding: 14,
-    marginBottom: 8,
-    opacity: 0.55,
-    borderLeftWidth: 4,
-    borderLeftColor: '#C6C6C8',
-  },
-  archivedTitle: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: '#1C1C1E',
-  },
-  archivedBody: {
-    fontSize: 13,
-    color: '#6C6C70',
-    marginTop: 3,
-  },
+  emptyState: { alignItems: 'center', paddingVertical: 24 },
+  emptyText:  { fontSize: 14 },
 });

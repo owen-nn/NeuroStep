@@ -3,144 +3,309 @@ import {
   View, Text, ScrollView, TouchableOpacity, Switch, Alert, StyleSheet,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-
-type Treatment  = 'binaural' | 'metronome';
-type Sensitivity = 'low' | 'medium' | 'high';
+import {
+  X, ChevronDown, ChevronUp, CircleCheck, CircleX,
+  Cpu, Vibrate, Smartphone, Plus, RefreshCw,
+} from 'lucide-react-native';
+import { batteryColor } from '../constants/colors';
+import { useAppState }  from '../context/AppStateContext';
+import { useColors }    from '../context/ThemeContext';
 
 type Props = { onClose: () => void };
 
-export default function DevicesScreen({ onClose }: Props) {
-  const [treatment,      setTreatment]    = useState<Treatment>('binaural');
-  const [bpm,            setBpm]           = useState(100);
-  const [sensitivity,    setSensitivity]   = useState<Sensitivity>('medium');
-  const [fallDetection,  setFallDetection] = useState(true);
+type DeviceType = 'hub' | 'vibration' | 'phone';
 
-  const stubAlert = (msg: string) => Alert.alert('Coming Soon', msg, [{ text: 'OK' }]);
+interface DeviceConfig {
+  id:        string;
+  type:      DeviceType;
+  name:      string;
+  model:     string;
+  connected: boolean;
+  battery?:  number;
+  active:    boolean;
+}
 
-  const adjustBpm = (delta: number) =>
-    setBpm((v) => Math.min(160, Math.max(40, v + delta)));
+type Intensity = 'low' | 'medium' | 'high';
+const INTENSITIES: Intensity[] = ['low', 'medium', 'high'];
 
-  const testEmergencyAlert = () =>
-    Alert.alert(
-      '🚨 Test Alert Sent',
-      'In Phase 2, this will send a real SMS/push notification to your emergency contacts via the backend.',
-      [{ text: 'Got it' }]
-    );
+// ── Intensity track ─────────────────────────────────────────────────────────
 
+function IntensityTrack({ value, onChange, disabled }: {
+  value:    Intensity;
+  onChange: (v: Intensity) => void;
+  disabled?: boolean;
+}) {
+  const C = useColors();
   return (
-    <SafeAreaView style={styles.screen} edges={['top']}>
-      {/* ── Close button ───────────────────────────────────── */}
-      <TouchableOpacity style={styles.closeBtn} onPress={onClose} activeOpacity={0.7}>
-        <Text style={styles.closeBtnLabel}>✕   Close Settings</Text>
-      </TouchableOpacity>
-
-      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-
-        {/* ── Hardware Status ──────────────────────────────── */}
-        <Text style={styles.sectionTitle}>HARDWARE STATUS</Text>
-        <View style={styles.card}>
-          <HardwareRow
-            icon="📟"
-            label="Ankle IMU (MPU6050)"
-            status="Not Connected"
-            connected={false}
-            onReconnect={() => stubAlert('BLE hardware pairing will be implemented in Phase 3.')}
-          />
-          <View style={styles.rowDivider} />
-          <HardwareRow
-            icon="🎯"
-            label="Hub (ESP32-S3)"
-            status="Not Connected"
-            connected={false}
-            onReconnect={() => stubAlert('BLE hardware pairing will be implemented in Phase 3.')}
-          />
-        </View>
-
-        {/* ── Treatment Type ────────────────────────────────── */}
-        <Text style={styles.sectionTitle}>TREATMENT TYPE</Text>
-        <View style={[styles.card, styles.row]}>
-          <TreatmentPill
-            label="🎵 Binaural Beats"
-            selected={treatment === 'binaural'}
-            onPress={() => setTreatment('binaural')}
-          />
-          <TreatmentPill
-            label="🥁 Metronome"
-            selected={treatment === 'metronome'}
-            onPress={() => setTreatment('metronome')}
-          />
-        </View>
-
-        {/* ── BPM Stepper ───────────────────────────────────── */}
-        <Text style={styles.sectionTitle}>METRONOME BPM</Text>
-        <View style={[styles.card, styles.bpmRow]}>
-          <TouchableOpacity style={styles.bpmBtn} onPress={() => adjustBpm(-5)} activeOpacity={0.7}>
-            <Text style={styles.bpmBtnLabel}>−</Text>
-          </TouchableOpacity>
-          <View style={styles.bpmDisplay}>
-            <Text style={styles.bpmValue}>{bpm}</Text>
-            <Text style={styles.bpmUnit}>BPM</Text>
-          </View>
-          <TouchableOpacity style={styles.bpmBtn} onPress={() => adjustBpm(5)} activeOpacity={0.7}>
-            <Text style={styles.bpmBtnLabel}>+</Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* ── Detection Sensitivity ─────────────────────────── */}
-        <Text style={styles.sectionTitle}>DETECTION SENSITIVITY</Text>
-        <View style={[styles.card, styles.row, { gap: 8 }]}>
-          {(['low', 'medium', 'high'] as Sensitivity[]).map((s) => (
+    <View style={st.wrapper}>
+      <View style={[st.trackLine, { backgroundColor: C.border }, disabled && { opacity: 0.3 }]} />
+      <View style={st.nodesRow}>
+        {INTENSITIES.map((s) => {
+          const selected = value === s;
+          return (
             <TouchableOpacity
               key={s}
-              style={[styles.sensitivityBtn, sensitivity === s && styles.sensitivityBtnActive]}
-              onPress={() => setSensitivity(s)}
-              activeOpacity={0.7}
+              style={st.nodeContainer}
+              onPress={() => !disabled && onChange(s)}
+              activeOpacity={disabled ? 1 : 0.7}
             >
-              <Text style={[styles.sensitivityLabel, sensitivity === s && styles.sensitivityLabelActive]}>
+              <View style={[
+                st.node,
+                { backgroundColor: C.surfaceRaised, borderColor: C.border },
+                selected && !disabled && { backgroundColor: C.sage, borderColor: C.sage, transform: [{ scale: 1.1 }] },
+                disabled && { opacity: 0.35 },
+              ]} />
+              <Text style={[
+                st.nodeLabel,
+                { color: C.textMuted },
+                selected && !disabled && { color: C.sage },
+                disabled && { opacity: 0.35 },
+              ]}>
                 {s.charAt(0).toUpperCase() + s.slice(1)}
               </Text>
             </TouchableOpacity>
-          ))}
+          );
+        })}
+      </View>
+    </View>
+  );
+}
+
+// ── Device icon ─────────────────────────────────────────────────────────────
+
+function DeviceIcon({ type, color, size = 28 }: { type: DeviceType; color: string; size?: number }) {
+  switch (type) {
+    case 'hub':       return <Cpu        size={size} color={color} />;
+    case 'vibration': return <Vibrate    size={size} color={color} />;
+    case 'phone':     return <Smartphone size={size} color={color} />;
+  }
+}
+
+// ── Expandable device card ──────────────────────────────────────────────────
+
+function DeviceCard({ device, isExpanded, onToggleExpand, onToggleActive }: {
+  device:         DeviceConfig;
+  isExpanded:     boolean;
+  onToggleExpand: () => void;
+  onToggleActive: (id: string, active: boolean) => void;
+}) {
+  const C = useColors();
+  const [intensity, setIntensity] = useState<Intensity>('medium');
+
+  const DEVICE_COLOR: Record<DeviceType, string> = {
+    hub: C.sage, vibration: C.teal, phone: C.lavender,
+  };
+  const accent     = DEVICE_COLOR[device.type];
+  const canControl = device.connected && device.type !== 'hub';
+  const stubAlert  = (msg: string) => Alert.alert('Coming Soon', msg, [{ text: 'OK' }]);
+
+  return (
+    <View style={[dc.card, { backgroundColor: C.surface, borderLeftColor: device.connected ? accent : C.border }]}>
+      <TouchableOpacity style={dc.header} onPress={onToggleExpand} activeOpacity={0.8}>
+        <View style={[dc.iconWrap, { backgroundColor: accent + '22' }]}>
+          <DeviceIcon type={device.type} color={device.connected ? accent : C.textMuted} />
         </View>
 
-        {/* ── Fall Detection toggle ────────────────────────── */}
-        <Text style={styles.sectionTitle}>SAFETY</Text>
-        <View style={[styles.card, styles.toggleRow]}>
-          <View>
-            <Text style={styles.toggleLabel}>Fall Detection</Text>
-            <Text style={styles.toggleSub}>Alerts caregiver on impact event</Text>
+        <View style={dc.info}>
+          <Text style={[dc.name, { color: C.textPrimary }]}>{device.name}</Text>
+          <View style={dc.statusRow}>
+            {device.connected
+              ? <CircleCheck size={13} color={C.sage} />
+              : <CircleX     size={13} color={C.clay} />}
+            <Text style={[dc.statusText, { color: device.connected ? C.sage : C.clay }]}>
+              {device.connected ? 'Connected' : 'Not Connected'}
+            </Text>
+            {device.battery !== undefined && device.connected && (
+              <Text style={[dc.battery, { color: batteryColor(device.battery, C) }]}>
+                · {device.battery}%
+              </Text>
+            )}
+            {device.type === 'phone' && (
+              <Text style={[dc.statusText, { color: C.textMuted }]}>  · Always available</Text>
+            )}
           </View>
-          <Switch
-            value={fallDetection}
-            onValueChange={setFallDetection}
-            trackColor={{ false: '#C6C6C8', true: '#34C759' }}
-            thumbColor="#FFFFFF"
-            ios_backgroundColor="#C6C6C8"
+          <Text style={[dc.model, { color: C.textMuted }]}>{device.model}</Text>
+        </View>
+
+        <View style={dc.chevron}>
+          {isExpanded
+            ? <ChevronUp   size={18} color={C.textMuted} />
+            : <ChevronDown size={18} color={C.textMuted} />}
+        </View>
+      </TouchableOpacity>
+
+      {isExpanded && (
+        <View style={dc.expanded}>
+          <View style={[dc.expandDivider, { backgroundColor: C.separator }]} />
+
+          {/* Output devices: active toggle */}
+          {device.type !== 'hub' && (
+            <View style={dc.settingRow}>
+              <View style={dc.settingLabel}>
+                <Text style={[dc.settingTitle, { color: C.textPrimary }]}>
+                  {device.type === 'phone' ? 'Phone Fallback' : 'Use as Primary Output'}
+                </Text>
+                <Text style={[dc.settingSubtitle, { color: C.textMuted }]}>
+                  {device.type === 'phone'
+                    ? 'Phone vibrates when no other output device is active'
+                    : 'Delivers vibration cues during freeze events'}
+                </Text>
+              </View>
+              <Switch
+                value={device.active}
+                onValueChange={(val) => onToggleActive(device.id, val)}
+                disabled={!device.connected && device.type !== 'phone'}
+                trackColor={{ false: C.border, true: C.sage }}
+                thumbColor={C.textPrimary}
+                ios_backgroundColor={C.border}
+              />
+            </View>
+          )}
+
+          {/* Hub: connection info */}
+          {device.type === 'hub' && (
+            <>
+              <View style={dc.settingRow}>
+                <Text style={[dc.settingTitle, { color: C.textPrimary }]}>Firmware</Text>
+                <Text style={[dc.settingValue, { color: C.textSecondary }]}>v1.2.0</Text>
+              </View>
+              <View style={[dc.rowDivider, { backgroundColor: C.separator }]} />
+              <View style={dc.settingRow}>
+                <Text style={[dc.settingTitle, { color: C.textPrimary }]}>Signal Strength</Text>
+                <Text style={[dc.settingValue, { color: C.sage }]}>Strong (−58 dBm)</Text>
+              </View>
+              <View style={[dc.rowDivider, { backgroundColor: C.separator }]} />
+              <TouchableOpacity
+                style={[dc.actionBtn, { backgroundColor: C.surfaceRaised, borderColor: C.border }]}
+                onPress={() => stubAlert('IMU calibration coming in Phase 3.')}
+                activeOpacity={0.7}
+              >
+                <RefreshCw size={15} color={C.sage} />
+                <Text style={[dc.actionBtnLabel, { color: C.sage }]}>Calibrate IMU Sensor</Text>
+              </TouchableOpacity>
+            </>
+          )}
+
+          {/* Vibration: intensity + test */}
+          {device.type === 'vibration' && device.active && device.connected && (
+            <>
+              <View style={[dc.rowDivider, { backgroundColor: C.separator }]} />
+              <Text style={[dc.settingTitle, { color: C.textPrimary }]}>Vibration Intensity</Text>
+              <IntensityTrack value={intensity} onChange={setIntensity} disabled={!canControl} />
+              <View style={[dc.rowDivider, { backgroundColor: C.separator }]} />
+              <TouchableOpacity
+                style={[dc.actionBtn, { backgroundColor: C.surfaceRaised, borderColor: C.border }]}
+                onPress={() => Alert.alert('Test', 'Vibration cue sent to device.', [{ text: 'OK' }])}
+                activeOpacity={0.7}
+              >
+                <Vibrate size={15} color={C.teal} />
+                <Text style={[dc.actionBtnLabel, { color: C.teal }]}>Test Vibration</Text>
+              </TouchableOpacity>
+            </>
+          )}
+
+          {/* Phone: intensity */}
+          {device.type === 'phone' && device.active && (
+            <>
+              <View style={[dc.rowDivider, { backgroundColor: C.separator }]} />
+              <Text style={[dc.settingTitle, { color: C.textPrimary }]}>Phone Vibration Intensity</Text>
+              <IntensityTrack value={intensity} onChange={setIntensity} />
+            </>
+          )}
+
+          {/* Not connected — reconnect */}
+          {!device.connected && device.type !== 'phone' && (
+            <>
+              <View style={[dc.rowDivider, { backgroundColor: C.separator }]} />
+              <TouchableOpacity
+                style={[dc.actionBtn, { backgroundColor: C.surfaceRaised, borderColor: C.border }]}
+                onPress={() => stubAlert('BLE device pairing will be implemented in Phase 3.')}
+                activeOpacity={0.7}
+              >
+                <RefreshCw size={15} color={C.sage} />
+                <Text style={[dc.actionBtnLabel, { color: C.sage }]}>Reconnect Device</Text>
+              </TouchableOpacity>
+            </>
+          )}
+        </View>
+      )}
+    </View>
+  );
+}
+
+// ── Main screen ─────────────────────────────────────────────────────────────
+
+export default function DevicesScreen({ onClose }: Props) {
+  const { bleConnected, ankleBattery } = useAppState();
+  const C = useColors();
+
+  const [devices, setDevices] = useState<DeviceConfig[]>([
+    {
+      id: 'hub', type: 'hub',
+      name: 'NeuroStep Hub', model: 'ESP32-S3  ·  Waist Clip',
+      connected: bleConnected, battery: 12, active: true,
+    },
+    {
+      id: 'ankle', type: 'vibration',
+      name: 'Ankle Vibration Band', model: 'NV-1  ·  Left Ankle',
+      connected: bleConnected, battery: ankleBattery, active: true,
+    },
+    {
+      id: 'phone', type: 'phone',
+      name: 'Phone Vibration', model: 'Fallback output',
+      connected: true, battery: undefined, active: false,
+    },
+  ]);
+
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+
+  const toggleExpand = (id: string) =>
+    setExpandedId((prev) => (prev === id ? null : id));
+
+  const toggleActive = (id: string, active: boolean) =>
+    setDevices((prev) =>
+      prev.map((d) => {
+        if (d.id === id) return { ...d, active };
+        if (active && d.type !== 'hub' && d.id !== id) return { ...d, active: false };
+        return d;
+      })
+    );
+
+  return (
+    <SafeAreaView style={[styles.screen, { backgroundColor: C.bg }]} edges={['bottom']}>
+      <TouchableOpacity
+        style={[styles.closeBtn, { backgroundColor: C.surface, borderBottomColor: C.border }]}
+        onPress={onClose}
+        activeOpacity={0.7}
+      >
+        <X size={20} color={C.textPrimary} />
+        <Text style={[styles.closeBtnLabel, { color: C.textPrimary }]}>Close Devices</Text>
+      </TouchableOpacity>
+
+      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+        <Text style={[styles.sectionTitle, { color: C.textMuted }]}>CONNECTED DEVICES</Text>
+        <Text style={[styles.sectionNote, { color: C.textMuted }]}>
+          Tap a device to configure it. Only one output device can be active at a time.
+          If no output device is active, your phone will vibrate instead.
+        </Text>
+
+        {devices.map((device) => (
+          <DeviceCard
+            key={device.id}
+            device={device}
+            isExpanded={expandedId === device.id}
+            onToggleExpand={() => toggleExpand(device.id)}
+            onToggleActive={toggleActive}
           />
-        </View>
+        ))}
 
-        {/* ── Emergency Contacts ───────────────────────────── */}
-        <Text style={styles.sectionTitle}>EMERGENCY CONTACTS</Text>
-        <View style={styles.card}>
-          <View style={styles.contactRow}>
-            <Text style={styles.contactIcon}>👩‍⚕️</Text>
-            <View style={styles.contactInfo}>
-              <Text style={styles.contactName}>Dr. Sarah Johnson</Text>
-              <Text style={styles.contactDetail}>Caregiver  ·  +1 (555) 234-5678</Text>
-            </View>
-          </View>
-          <View style={styles.rowDivider} />
-          <View style={styles.contactRow}>
-            <Text style={styles.contactIcon}>👨‍👩‍👧</Text>
-            <View style={styles.contactInfo}>
-              <Text style={styles.contactName}>Family Member</Text>
-              <Text style={styles.contactDetail}>Emergency  ·  +1 (555) 876-5432</Text>
-            </View>
-          </View>
-        </View>
-
-        <TouchableOpacity style={styles.emergencyBtn} onPress={testEmergencyAlert} activeOpacity={0.8}>
-          <Text style={styles.emergencyBtnLabel}>🚨  TEST EMERGENCY ALERT</Text>
+        <TouchableOpacity
+          style={[styles.addDeviceBtn, { backgroundColor: C.surface, borderColor: C.border }]}
+          onPress={() => Alert.alert('Add Device', 'Additional device pairing coming in Phase 3.', [{ text: 'OK' }])}
+          activeOpacity={0.7}
+        >
+          <Plus size={18} color={C.sage} />
+          <Text style={[styles.addDeviceBtnLabel, { color: C.sage }]}>Add Another Device</Text>
         </TouchableOpacity>
 
         <View style={{ height: 32 }} />
@@ -149,127 +314,67 @@ export default function DevicesScreen({ onClose }: Props) {
   );
 }
 
-// ── Sub-components ─────────────────────────────────────────────────────────
-
-function HardwareRow({
-  icon, label, status, connected, onReconnect,
-}: {
-  icon: string; label: string; status: string;
-  connected: boolean; onReconnect: () => void;
-}) {
-  return (
-    <View style={hw.row}>
-      <Text style={hw.icon}>{icon}</Text>
-      <View style={hw.info}>
-        <Text style={hw.label}>{label}</Text>
-        <Text style={[hw.status, { color: connected ? '#00C853' : '#FF3B30' }]}>
-          {connected ? '● ' : '○ '}{status}
-        </Text>
-      </View>
-      <TouchableOpacity style={hw.btn} onPress={onReconnect} activeOpacity={0.7}>
-        <Text style={hw.btnLabel}>Reconnect</Text>
-      </TouchableOpacity>
-    </View>
-  );
-}
-
-function TreatmentPill({ label, selected, onPress }: { label: string; selected: boolean; onPress: () => void }) {
-  return (
-    <TouchableOpacity
-      style={[tp.pill, selected && tp.pillActive]}
-      onPress={onPress}
-      activeOpacity={0.7}
-    >
-      <Text style={[tp.label, selected && tp.labelActive]}>{label}</Text>
-    </TouchableOpacity>
-  );
-}
-
-// ── Styles ─────────────────────────────────────────────────────────────────
+// ── Styles — layout only, no colors ─────────────────────────────────────────
 
 const styles = StyleSheet.create({
-  screen:  { flex: 1, backgroundColor: '#F2F2F7' },
-
+  screen:  { flex: 1 },
   closeBtn: {
-    backgroundColor: '#1C1C1E',
-    paddingVertical: 18,
-    alignItems: 'center',
+    flexDirection:     'row',
+    alignItems:        'center',
+    justifyContent:    'center',
+    paddingVertical:   16,
+    gap:               10,
+    borderBottomWidth: 1,
+  },
+  closeBtnLabel: { fontSize: 16, fontWeight: '700' },
+  content:       { paddingHorizontal: 16, paddingTop: 20 },
+  sectionTitle:  { fontSize: 11, fontWeight: '700', letterSpacing: 1, marginBottom: 6, marginLeft: 4 },
+  sectionNote:   { fontSize: 12, lineHeight: 17, marginBottom: 16, marginLeft: 4 },
+  addDeviceBtn: {
+    flexDirection:  'row',
+    alignItems:     'center',
     justifyContent: 'center',
+    borderRadius:   14,
+    paddingVertical: 16,
+    gap:            10,
+    marginTop:       4,
+    borderWidth:     1,
+    borderStyle:    'dashed',
   },
-  closeBtnLabel: { color: '#FFFFFF', fontSize: 18, fontWeight: '700' },
-
-  content: { paddingHorizontal: 16, paddingTop: 20 },
-
-  sectionTitle: {
-    fontSize: 12, fontWeight: '700', color: '#6C6C70',
-    letterSpacing: 0.8, marginBottom: 8, marginLeft: 4,
-  },
-
-  card: {
-    backgroundColor: '#FFFFFF', borderRadius: 16, padding: 18,
-    marginBottom: 24,
-    shadowColor: '#000', shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.06, shadowRadius: 4, elevation: 2,
-  },
-  row: { flexDirection: 'row', gap: 10 },
-
-  rowDivider: { height: StyleSheet.hairlineWidth, backgroundColor: '#E5E5EA', marginVertical: 14 },
-
-  /* BPM */
-  bpmRow:    { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  bpmBtn:    { width: 64, height: 64, borderRadius: 32, backgroundColor: '#F2F2F7', alignItems: 'center', justifyContent: 'center' },
-  bpmBtnLabel: { fontSize: 32, fontWeight: '300', color: '#007AFF' },
-  bpmDisplay:  { alignItems: 'center' },
-  bpmValue:    { fontSize: 48, fontWeight: '800', color: '#1C1C1E' },
-  bpmUnit:     { fontSize: 14, color: '#6C6C70', fontWeight: '500', marginTop: -4 },
-
-  /* Sensitivity */
-  sensitivityBtn: {
-    flex: 1, paddingVertical: 16, borderRadius: 12,
-    backgroundColor: '#F2F2F7', alignItems: 'center',
-    borderWidth: 1.5, borderColor: 'transparent',
-  },
-  sensitivityBtnActive: { backgroundColor: '#E8F1FF', borderColor: '#007AFF' },
-  sensitivityLabel:       { fontSize: 15, fontWeight: '600', color: '#6C6C70' },
-  sensitivityLabelActive: { color: '#007AFF' },
-
-  /* Fall detection toggle row */
-  toggleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  toggleLabel: { fontSize: 17, fontWeight: '600', color: '#1C1C1E' },
-  toggleSub:   { fontSize: 13, color: '#6C6C70', marginTop: 2 },
-
-  /* Contacts */
-  contactRow: { flexDirection: 'row', alignItems: 'center', gap: 14 },
-  contactIcon: { fontSize: 32 },
-  contactInfo: { flex: 1 },
-  contactName: { fontSize: 17, fontWeight: '600', color: '#1C1C1E' },
-  contactDetail: { fontSize: 13, color: '#6C6C70', marginTop: 2 },
-
-  /* Emergency button */
-  emergencyBtn: {
-    backgroundColor: '#FF3B30', borderRadius: 16,
-    paddingVertical: 20, alignItems: 'center', justifyContent: 'center',
-  },
-  emergencyBtnLabel: { color: '#FFFFFF', fontSize: 18, fontWeight: '800', letterSpacing: 0.5 },
+  addDeviceBtnLabel: { fontSize: 15, fontWeight: '600' },
 });
 
-const hw = StyleSheet.create({
-  row:      { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  icon:     { fontSize: 28 },
-  info:     { flex: 1 },
-  label:    { fontSize: 16, fontWeight: '600', color: '#1C1C1E' },
-  status:   { fontSize: 13, fontWeight: '500', marginTop: 3 },
-  btn:      { backgroundColor: '#F2F2F7', paddingHorizontal: 14, paddingVertical: 10, borderRadius: 10, borderWidth: 1, borderColor: '#C6C6C8' },
-  btnLabel: { fontSize: 14, fontWeight: '600', color: '#007AFF' },
+const dc = StyleSheet.create({
+  card:        { borderRadius: 16, borderLeftWidth: 4, marginBottom: 12, overflow: 'hidden' },
+  header:      { flexDirection: 'row', alignItems: 'center', padding: 16, gap: 14 },
+  iconWrap:    { width: 52, height: 52, borderRadius: 14, alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
+  info:        { flex: 1, gap: 3 },
+  name:        { fontSize: 16, fontWeight: '700' },
+  statusRow:   { flexDirection: 'row', alignItems: 'center', gap: 5 },
+  statusText:  { fontSize: 12, fontWeight: '600' },
+  battery:     { fontSize: 12, fontWeight: '600' },
+  model:       { fontSize: 11, marginTop: 1 },
+  chevron:     { padding: 4 },
+  expanded:    { paddingHorizontal: 16, paddingBottom: 16 },
+  expandDivider: { height: StyleSheet.hairlineWidth, marginBottom: 14 },
+  rowDivider:    { height: StyleSheet.hairlineWidth, marginVertical: 12 },
+  settingRow:    { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
+  settingLabel:  { flex: 1 },
+  settingTitle:  { fontSize: 14, fontWeight: '600' },
+  settingSubtitle: { fontSize: 12, marginTop: 2, lineHeight: 16 },
+  settingValue:  { fontSize: 14, fontWeight: '600' },
+  actionBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    borderRadius: 10, paddingVertical: 12, gap: 8, borderWidth: 1,
+  },
+  actionBtnLabel: { fontSize: 14, fontWeight: '600' },
 });
 
-const tp = StyleSheet.create({
-  pill: {
-    flex: 1, paddingVertical: 18, borderRadius: 14,
-    backgroundColor: '#F2F2F7', alignItems: 'center',
-    borderWidth: 1.5, borderColor: 'transparent',
-  },
-  pillActive:   { backgroundColor: '#E8F1FF', borderColor: '#007AFF' },
-  label:        { fontSize: 15, fontWeight: '600', color: '#6C6C70' },
-  labelActive:  { color: '#007AFF' },
+const st = StyleSheet.create({
+  wrapper:       { paddingTop: 14, paddingBottom: 4 },
+  trackLine:     { position: 'absolute', top: 31, left: '16%', right: '16%', height: 4, borderRadius: 2 },
+  nodesRow:      { flexDirection: 'row', justifyContent: 'space-between' },
+  nodeContainer: { flex: 1, alignItems: 'center', gap: 7 },
+  node:          { width: 32, height: 32, borderRadius: 16, borderWidth: 2 },
+  nodeLabel:     { fontSize: 12, fontWeight: '600' },
 });
