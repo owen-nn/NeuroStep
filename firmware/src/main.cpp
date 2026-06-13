@@ -67,9 +67,14 @@ void readAccel(float &ax, float &ay, float &az) {
   int16_t raw_ay = (Wire.read() << 8) | Wire.read();
   int16_t raw_az = (Wire.read() << 8) | Wire.read();
 
-  // convert to mg using 4G range sensitivity to match DAPHNET
-  ax = raw_ax / 8192.0f * 1000.0f;
-  ay = raw_ay / 8192.0f * 1000.0f;
+  // // convert to mg using 4G range sensitivity to match DAPHNET
+  // ax = raw_ax / 8192.0f * 1000.0f;
+  // ay = raw_ay / 8192.0f * 1000.0f;
+  // az = raw_az / 8192.0f * 1000.0f;
+
+  // swap axes to match DAPHNET ankle sensor orientation
+  ax = raw_ay / 8192.0f * 1000.0f;
+  ay = raw_ax / 8192.0f * 1000.0f;
   az = raw_az / 8192.0f * 1000.0f;
 }
 
@@ -151,6 +156,8 @@ void loop() {
   // read sensor directly without Adafruit library
   float ax, ay, az;
   readAccel(ax, ay, az);
+
+  Serial.printf("raw: ax=%.1f ay=%.1f az=%.1f\n", ax, ay, az);
 
   // store in circular buffer
   window_buf[buf_idx][0] = ax;
