@@ -1,26 +1,18 @@
 // ============================================================
 //  NeuroStep — Freezing of Gait detector
 //  ESP32-S3 + MPU6050 + vibration motor
-//  Runs a CNN locally to detect FOG, delivers rhythmic
-//  vibration cueing, and notifies the mobile app via BLE.
+//  Runs a CNN locally to detect FOG and gives rhythmic
+//  vibration cueing to help the wearer resume walking.
 // ============================================================
 
 #include <Arduino.h>
 #include <Wire.h>
-#include <BLEDevice.h>
-#include <BLEServer.h>
-#include <BLEUtils.h>
-#include <BLE2902.h>
 #include "TensorFlowLite_ESP32.h"
 #include "tensorflow/lite/micro/all_ops_resolver.h"
 #include "tensorflow/lite/micro/micro_interpreter.h"
 #include "tensorflow/lite/micro/micro_error_reporter.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "fog_model.h"
-
-// ── BLE UUIDs ─────────────────────────────────────────────────
-#define SERVICE_UUID     "4fafc201-1fb5-459e-8fcc-c5c9c331914b"
-#define FREEZE_CHAR_UUID "beb5483e-36e1-4688-b7f5-ea07361b26a8"
 
 // pins
 #define MOTOR_PIN      13
@@ -33,11 +25,12 @@
 #define SAMPLE_RATE_HZ   64
 #define WINDOW_SIZE      64
 #define NUM_CHANNELS      3
-#define FOG_THRESHOLD  0.70f
+#define FOG_THRESHOLD  0.35f
 #define MAX_ACCEL      3000.0f
-#define PROB_HISTORY      8
+#define PROB_HISTORY      6
 
-// vibration cueing (1Hz rhythm, research-backed)
+// vibration cueing (research-backed 1Hz rhythm)
+// 400ms on / 600ms off = 1Hz, 10s total
 #define ALERT_DURATION_MS  10000
 #define CUE_PERIOD_MS       1000
 #define CUE_ON_MS            400
@@ -47,7 +40,7 @@
 #define REF_AY 1024.0f
 #define REF_AZ  175.0f
 
-// normalization stats from training — shifted by calibration
+// normalization stats from training
 float MEAN[3] = { -98.07f,  998.45f,  243.05f };
 const float STD[3] = { 570.03f,  364.03f,  315.52f };
 
@@ -67,7 +60,7 @@ float window_buf[WINDOW_SIZE][NUM_CHANNELS];
 int   buf_idx  = 0;
 bool  buf_full = false;
 
-// rolling average buffer
+// rolling average
 float prob_history[PROB_HISTORY] = {0};
 int   prob_idx = 0;
 
@@ -76,23 +69,6 @@ unsigned long last_sample_ms = 0;
 bool alerting = false;
 unsigned long alert_start_ms = 0;
 
-// BLE state
-BLECharacteristic* pFreezeChar = nullptr;
-bool deviceConnected = false;
-
-class ServerCallbacks : public BLEServerCallbacks {
-  void onConnect(BLEServer* pServer) override {
-    deviceConnected = true;
-    Serial.println("BLE client connected");
-  }
-  void onDisconnect(BLEServer* pServer) override {
-    deviceConnected = false;
-    Serial.println("BLE client disconnected — restarting advertising");
-    BLEDevice::startAdvertising();
-  }
-};
-
-// MPU6050 I2C helpers
 void writeReg(byte reg, byte val) {
   Wire.beginTransmission(MPU_ADDR);
   Wire.write(reg);
@@ -100,6 +76,7 @@ void writeReg(byte reg, byte val) {
   Wire.endTransmission();
 }
 
+// burst-read all 3 axes — signs match DAPHNET ankle orientation
 void readAccel(float &ax, float &ay, float &az) {
   Wire.beginTransmission(MPU_ADDR);
   Wire.write(0x3B);
@@ -152,20 +129,8 @@ void calibrate() {
   }
 }
 
-// send BLE notification with fog confidence value
-void notify_freeze(float fogConfidence) {
-  if (!deviceConnected || !pFreezeChar) {
-    Serial.println("BLE: no client connected, skipping notify");
-    return;
-  }
-  String val = String(fogConfidence, 2);
-  pFreezeChar->setValue(val.c_str());
-  pFreezeChar->notify();
-  Serial.printf("BLE notified: fog=%.2f\n", fogConfidence);
-}
-
 float run_inference();
-void  start_alert(float fogConfidence);
+void  start_alert();
 void  update_alert();
 
 // ============================================================
@@ -190,26 +155,6 @@ void setup() {
 
   calibrate();
 
-  // ── BLE setup ──────────────────────────────────────────────
-  BLEDevice::init("NeuroStep");
-  BLEServer* pServer = BLEDevice::createServer();
-  pServer->setCallbacks(new ServerCallbacks());
-
-  BLEService* pService = pServer->createService(SERVICE_UUID);
-  pFreezeChar = pService->createCharacteristic(
-    FREEZE_CHAR_UUID,
-    BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_NOTIFY
-  );
-  pFreezeChar->addDescriptor(new BLE2902());
-  pService->start();
-
-  BLEAdvertising* pAdvertising = BLEDevice::getAdvertising();
-  pAdvertising->addServiceUUID(SERVICE_UUID);
-  pAdvertising->setScanResponse(true);
-  BLEDevice::startAdvertising();
-  Serial.println("BLE advertising as 'NeuroStep'");
-
-  // ── TFLite setup ───────────────────────────────────────────
   tf_model = tflite::GetModel(fog_model);
   if (tf_model->version() != TFLITE_SCHEMA_VERSION) {
     Serial.println("tflite version mismatch");
@@ -221,7 +166,7 @@ void setup() {
   interpreter = &static_interpreter;
 
   if (interpreter->AllocateTensors() != kTfLiteOk) {
-    Serial.println("tensor allocation failed");
+    Serial.println("tensor allocation failed — increase arena size");
     while (1) {}
   }
 
@@ -242,6 +187,7 @@ void loop() {
 
   float ax, ay, az;
   readAccel(ax, ay, az);
+
   if (!validReading(ax, ay, az)) return;
 
   window_buf[buf_idx][0] = ax;
@@ -265,7 +211,7 @@ void loop() {
     avg >= FOG_THRESHOLD ? "<<< FOG >>>" : "ok");
 
   if (avg >= FOG_THRESHOLD && !alerting) {
-    start_alert(avg);
+    start_alert();
   }
 }
 
@@ -293,12 +239,10 @@ float run_inference() {
   return e1 / (e0 + e1);
 }
 
-// ============================================================
-void start_alert(float fogConfidence) {
+void start_alert() {
   Serial.println(">>> FOG confirmed — 10s rhythmic cue at 1Hz");
   alerting       = true;
   alert_start_ms = millis();
-  notify_freeze(fogConfidence);
 }
 
 void update_alert() {
