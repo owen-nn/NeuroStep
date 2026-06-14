@@ -5,7 +5,9 @@
     "version": "1.0.0",
     "orientation": "portrait",
     "userInterfaceStyle": "light",
-    "assetBundlePatterns": ["**/*"],
+    "assetBundlePatterns": [
+      "**/*"
+    ],
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.neurostep.app",
@@ -22,6 +24,12 @@
         "BLUETOOTH_CONNECT",
         "BLUETOOTH_SCAN"
       ]
-    }
+    },
+    "extra": {
+      "eas": {
+        "projectId": "1d9017c9-b65d-4b35-b36e-919f4d08744b"
+      }
+    },
+    "owner": "waterprisem"
   }
 }
