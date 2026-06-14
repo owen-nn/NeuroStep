@@ -6,6 +6,7 @@ import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { useAppState } from '../context/AppStateContext';
 import { useColors }  from '../context/ThemeContext';
+import { postFreezeEvent, postFallEvent } from '../services/api';
 
 export default function DevToggle() {
   const { systemState, setSystemState } = useAppState();
@@ -13,13 +14,18 @@ export default function DevToggle() {
 
   if (!__DEV__) return null;
 
+  const handleFreeze = () => {
+    setSystemState('freeze');
+    postFreezeEvent({ durationMs: 4200, fogConfidence: 0.87, cueDelivered: true }).catch(console.warn);
+  };
+
   return (
     <View style={[styles.bar, { backgroundColor: '#05090D', borderTopColor: C.border }]}>
       <Text style={[styles.devLabel, { color: C.yellow }]}>DEV</Text>
       <View style={styles.buttons}>
         <TouchableOpacity
           style={[styles.btn, { backgroundColor: C.teal }, systemState === 'freeze' && styles.btnActive]}
-          onPress={() => setSystemState('freeze')}
+          onPress={handleFreeze}
           activeOpacity={0.7}
         >
           <Text style={styles.btnLabel}>FREEZE</Text>
@@ -27,7 +33,10 @@ export default function DevToggle() {
 
         <TouchableOpacity
           style={[styles.btn, { backgroundColor: C.clay }, systemState === 'fall' && styles.btnActive]}
-          onPress={() => setSystemState('fall')}
+          onPress={() => {
+            setSystemState('fall');
+            postFallEvent({ severity: 'medium', impactG: 3.2, alertSent: false }).catch(console.warn);
+          }}
           activeOpacity={0.7}
         >
           <Text style={styles.btnLabel}>FALL</Text>

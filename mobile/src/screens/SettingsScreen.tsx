@@ -10,16 +10,9 @@ import {
 } from 'lucide-react-native';
 import { useColors } from '../context/ThemeContext';
 import { useTheme }  from '../context/ThemeContext';
+import { useAppState, type Contact } from '../context/AppStateContext';
 
 type Props = { onClose: () => void };
-
-interface Contact {
-  id:    string;
-  name:  string;
-  role:  string;
-  phone: string;
-  type:  'doctor' | 'family' | 'other';
-}
 
 const HOW_TO_STEPS = [
   { step: '1', text: 'Wear the ankle sensor on your left ankle before walking.' },
@@ -132,14 +125,15 @@ function ContactCard({
 
 // ── Main screen ─────────────────────────────────────────────────────────────
 
+const BLANK_DRAFT = { name: '', role: '', phone: '', type: 'family' as Contact['type'] };
+
 export default function SettingsScreen({ onClose }: Props) {
   const C = useColors();
   const { theme, toggleTheme } = useTheme();
+  const { contacts, setContacts } = useAppState();
 
-  const [contacts, setContacts] = useState<Contact[]>([
-    { id: 'c1', type: 'doctor', name: 'Dr. Sarah Johnson', role: 'Caregiver', phone: '+1 (555) 234-5678' },
-    { id: 'c2', type: 'family', name: 'Family Member',     role: 'Emergency', phone: '+1 (555) 876-5432' },
-  ]);
+  const [showAddForm, setShowAddForm] = useState(false);
+  const [newDraft,    setNewDraft]    = useState(BLANK_DRAFT);
 
   const saveContact = (updated: Contact) =>
     setContacts((prev) => prev.map((c) => (c.id === updated.id ? updated : c)));
@@ -147,8 +141,18 @@ export default function SettingsScreen({ onClose }: Props) {
   const removeContact = (id: string) =>
     setContacts((prev) => prev.filter((c) => c.id !== id));
 
-  const addContact = () =>
-    Alert.alert('Add Contact', 'Full contact management coming in Phase 2.', [{ text: 'OK' }]);
+  const commitAdd = () => {
+    if (!newDraft.name.trim() || !newDraft.phone.trim()) {
+      Alert.alert('Missing info', 'Please enter at least a name and phone number.');
+      return;
+    }
+    setContacts((prev) => [
+      ...prev,
+      { ...newDraft, id: Date.now().toString() },
+    ]);
+    setNewDraft(BLANK_DRAFT);
+    setShowAddForm(false);
+  };
 
   const testEmergency = () =>
     Alert.alert(
@@ -178,14 +182,78 @@ export default function SettingsScreen({ onClose }: Props) {
           <ContactCard key={c.id} contact={c} onSave={saveContact} onRemove={removeContact} />
         ))}
 
-        <TouchableOpacity
-          style={[styles.addBtn, { backgroundColor: C.surface, borderColor: C.border }]}
-          onPress={addContact}
-          activeOpacity={0.7}
-        >
-          <UserPlus size={16} color={C.sage} />
-          <Text style={[styles.addBtnLabel, { color: C.sage }]}>Add Emergency Contact</Text>
-        </TouchableOpacity>
+        {showAddForm ? (
+          <View style={[ec.editCard, { backgroundColor: C.surfaceRaised, borderColor: C.sage }]}>
+            <TextInput
+              style={[ec.input, { color: C.textPrimary, borderColor: C.border, backgroundColor: C.bg }]}
+              value={newDraft.name}
+              onChangeText={(v) => setNewDraft((d) => ({ ...d, name: v }))}
+              placeholder="Full name"
+              placeholderTextColor={C.textMuted}
+              autoCapitalize="words"
+              autoFocus
+            />
+            <TextInput
+              style={[ec.input, { color: C.textPrimary, borderColor: C.border, backgroundColor: C.bg }]}
+              value={newDraft.role}
+              onChangeText={(v) => setNewDraft((d) => ({ ...d, role: v }))}
+              placeholder="Role (e.g. Caregiver)"
+              placeholderTextColor={C.textMuted}
+              autoCapitalize="words"
+            />
+            <TextInput
+              style={[ec.input, { color: C.textPrimary, borderColor: C.border, backgroundColor: C.bg }]}
+              value={newDraft.phone}
+              onChangeText={(v) => setNewDraft((d) => ({ ...d, phone: v }))}
+              placeholder="Phone number"
+              placeholderTextColor={C.textMuted}
+              keyboardType="phone-pad"
+            />
+            <View style={styles.typeRow}>
+              {(['family', 'doctor', 'other'] as Contact['type'][]).map((t) => (
+                <TouchableOpacity
+                  key={t}
+                  style={[styles.typeBtn, {
+                    backgroundColor: newDraft.type === t ? C.sage : C.surface,
+                    borderColor: newDraft.type === t ? C.sage : C.border,
+                  }]}
+                  onPress={() => setNewDraft((d) => ({ ...d, type: t }))}
+                  activeOpacity={0.8}
+                >
+                  <Text style={[styles.typeBtnLabel, { color: newDraft.type === t ? '#FFFFFF' : C.textSecondary }]}>
+                    {t.charAt(0).toUpperCase() + t.slice(1)}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+            <View style={ec.editBtns}>
+              <TouchableOpacity
+                style={[ec.saveBtn, { backgroundColor: C.sage }]}
+                onPress={commitAdd}
+                activeOpacity={0.8}
+              >
+                <Check size={15} color="#FFFFFF" />
+                <Text style={ec.saveBtnLabel}>Add</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[ec.cancelBtn, { borderColor: C.border }]}
+                onPress={() => { setNewDraft(BLANK_DRAFT); setShowAddForm(false); }}
+                activeOpacity={0.8}
+              >
+                <Text style={[ec.cancelBtnLabel, { color: C.textSecondary }]}>Cancel</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        ) : (
+          <TouchableOpacity
+            style={[styles.addBtn, { backgroundColor: C.surface, borderColor: C.border }]}
+            onPress={() => setShowAddForm(true)}
+            activeOpacity={0.7}
+          >
+            <UserPlus size={16} color={C.sage} />
+            <Text style={[styles.addBtnLabel, { color: C.sage }]}>Add Emergency Contact</Text>
+          </TouchableOpacity>
+        )}
 
         <TouchableOpacity
           style={[styles.emergencyBtn, { backgroundColor: C.clay }]}
@@ -319,6 +387,16 @@ const styles = StyleSheet.create({
     borderStyle:      'dashed',
   },
   addBtnLabel: { fontSize: 15, fontWeight: '600' },
+
+  typeRow: { flexDirection: 'row', gap: 8 },
+  typeBtn: {
+    flex: 1,
+    paddingVertical: 10,
+    borderRadius: 10,
+    borderWidth: 1,
+    alignItems: 'center',
+  },
+  typeBtnLabel: { fontSize: 13, fontWeight: '600' },
 
   emergencyBtn: {
     flexDirection:  'row',

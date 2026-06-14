@@ -1,11 +1,11 @@
 import React, { useState } from 'react';
-import { Modal, View, Text, TouchableOpacity, StyleSheet, Alert } from 'react-native';
+import { Modal, View, Text, TouchableOpacity, StyleSheet, Linking } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
-import { AlertTriangle } from 'lucide-react-native';
+import { AlertTriangle, Phone, MessageSquare, ChevronLeft } from 'lucide-react-native';
 
 import { ThemeProvider, useColors, useTheme } from './src/context/ThemeContext';
-import { AppStateProvider, useAppState } from './src/context/AppStateContext';
+import { AppStateProvider, useAppState, type Contact } from './src/context/AppStateContext';
 import HomeScreen      from './src/screens/HomeScreen';
 import AnalyticsScreen from './src/screens/AnalyticsScreen';
 import DevicesScreen   from './src/screens/DevicesScreen';
@@ -15,48 +15,114 @@ type ActiveView = 'home' | 'analytics' | 'devices' | 'settings';
 
 // ── Freeze / Fall popup ─────────────────────────────────────────────────────
 
+function dialPhone(phone: string) {
+  const cleaned = phone.replace(/[^\d+]/g, '');
+  Linking.openURL(`tel:${cleaned}`);
+}
+
+function textPhone(phone: string) {
+  const cleaned = phone.replace(/[^\d+]/g, '');
+  Linking.openURL(`sms:${cleaned}`);
+}
+
+function ContactRow({ contact, C }: { contact: Contact; C: ReturnType<typeof useColors> }) {
+  return (
+    <View style={[fa.contactRow, { borderColor: C.border }]}>
+      <View style={fa.contactInfo}>
+        <Text style={[fa.contactName, { color: C.textPrimary }]}>{contact.name}</Text>
+        <Text style={[fa.contactRole, { color: C.textSecondary }]}>{contact.role}</Text>
+      </View>
+      <TouchableOpacity
+        style={[fa.contactBtn, { backgroundColor: C.sage }]}
+        onPress={() => dialPhone(contact.phone)}
+        activeOpacity={0.8}
+      >
+        <Phone size={18} color="#FFFFFF" />
+        <Text style={fa.contactBtnLabel}>Call</Text>
+      </TouchableOpacity>
+      <TouchableOpacity
+        style={[fa.contactBtn, { backgroundColor: C.teal }]}
+        onPress={() => textPhone(contact.phone)}
+        activeOpacity={0.8}
+      >
+        <MessageSquare size={18} color="#FFFFFF" />
+        <Text style={fa.contactBtnLabel}>Text</Text>
+      </TouchableOpacity>
+    </View>
+  );
+}
+
 function FreezeAlertModal() {
-  const { systemState, setSystemState } = useAppState();
+  const { systemState, setSystemState, contacts } = useAppState();
   const C = useColors();
+  const [showContacts, setShowContacts] = useState(false);
 
   const isVisible = systemState === 'freeze' || systemState === 'fall';
   if (!isVisible) return null;
 
   const isFreeze = systemState === 'freeze';
 
+  const dismiss = () => { setSystemState('normal'); setShowContacts(false); };
+
   return (
     <Modal visible transparent animationType="fade" statusBarTranslucent>
       <View style={[fa.overlay, { backgroundColor: 'rgba(0,0,0,0.88)' }]}>
         <View style={[fa.card, { backgroundColor: C.surface, borderColor: C.clay }]}>
-          <AlertTriangle size={52} color={C.clay} />
 
-          <Text style={[fa.title, { color: C.textPrimary }]}>
-            {isFreeze ? 'Freeze Episode' : 'Fall Detected'}
-          </Text>
+          {showContacts ? (
+            <>
+              <Text style={[fa.title, { color: C.textPrimary }]}>Get Help</Text>
+              <Text style={[fa.desc, { color: C.textSecondary }]}>
+                Choose a contact to call or text now.
+              </Text>
 
-          <Text style={[fa.subtitle, { color: C.clay }]}>Are you okay?</Text>
+              {contacts.map((c) => (
+                <ContactRow key={c.id} contact={c} C={C} />
+              ))}
 
-          <Text style={[fa.desc, { color: C.textSecondary }]}>
-            {isFreeze
-              ? 'NeuroStep detected a potential walking freeze and delivered a vibration cue to help you continue.'
-              : 'NeuroStep detected a potential fall event. Please confirm you are safe.'}
-          </Text>
+              <TouchableOpacity
+                style={[fa.backBtn, { borderColor: C.border }]}
+                onPress={() => setShowContacts(false)}
+                activeOpacity={0.8}
+              >
+                <ChevronLeft size={18} color={C.textSecondary} />
+                <Text style={[fa.backBtnLabel, { color: C.textSecondary }]}>Back</Text>
+              </TouchableOpacity>
+            </>
+          ) : (
+            <>
+              <AlertTriangle size={52} color={C.clay} />
 
-          <TouchableOpacity
-            style={[fa.primaryBtn, { backgroundColor: C.sage }]}
-            onPress={() => setSystemState('normal')}
-            activeOpacity={0.8}
-          >
-            <Text style={fa.primaryBtnLabel}>I'm Fine</Text>
-          </TouchableOpacity>
+              <Text style={[fa.title, { color: C.textPrimary }]}>
+                {isFreeze ? 'Freeze Episode' : 'Fall Detected'}
+              </Text>
 
-          <TouchableOpacity
-            style={[fa.secondaryBtn, { backgroundColor: C.clay }]}
-            onPress={() => Alert.alert('Get Help', 'Emergency alert feature coming in Phase 2.', [{ text: 'OK' }])}
-            activeOpacity={0.8}
-          >
-            <Text style={fa.secondaryBtnLabel}>Get Help</Text>
-          </TouchableOpacity>
+              <Text style={[fa.subtitle, { color: C.clay }]}>Are you okay?</Text>
+
+              <Text style={[fa.desc, { color: C.textSecondary }]}>
+                {isFreeze
+                  ? 'NeuroStep detected a potential walking freeze and delivered a vibration cue to help you continue.'
+                  : 'NeuroStep detected a potential fall event. Please confirm you are safe.'}
+              </Text>
+
+              <TouchableOpacity
+                style={[fa.primaryBtn, { backgroundColor: C.sage }]}
+                onPress={dismiss}
+                activeOpacity={0.8}
+              >
+                <Text style={fa.primaryBtnLabel}>I'm Fine</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[fa.secondaryBtn, { backgroundColor: C.clay }]}
+                onPress={() => setShowContacts(true)}
+                activeOpacity={0.8}
+              >
+                <Text style={fa.secondaryBtnLabel}>Get Help</Text>
+              </TouchableOpacity>
+            </>
+          )}
+
         </View>
       </View>
     </Modal>
@@ -190,4 +256,38 @@ const fa = StyleSheet.create({
     fontSize: 16,
     fontWeight: '700',
   },
+
+  contactRow: {
+    width: '100%',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    borderWidth: 1,
+    borderRadius: 14,
+    padding: 12,
+  },
+  contactInfo: { flex: 1 },
+  contactName: { fontSize: 15, fontWeight: '700' },
+  contactRole: { fontSize: 12, marginTop: 2 },
+  contactBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    borderRadius: 10,
+  },
+  contactBtnLabel: { color: '#FFFFFF', fontSize: 14, fontWeight: '700' },
+
+  backBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    borderRadius: 12,
+    borderWidth: 1,
+    marginTop: 4,
+  },
+  backBtnLabel: { fontSize: 15, fontWeight: '600' },
 });

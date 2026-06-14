@@ -1,17 +1,21 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
-  View, Text, ScrollView, TouchableOpacity, StyleSheet,
+  View, Text, ScrollView, TouchableOpacity, StyleSheet, ActivityIndicator, RefreshControl,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Settings } from 'lucide-react-native';
 
-import { useAppState }   from '../context/AppStateContext';
-import { useColors }     from '../context/ThemeContext';
-import StatusBadge       from '../components/StatusBadge';
-import NotificationCard  from '../components/NotificationCard';
-import BottomDock        from '../components/BottomDock';
-import DevToggle         from '../components/DevToggle';
-import { MOCK_NOTIFICATIONS, type MockNotification, type NotifCategory } from '../constants/mockData';
+import { useAppState }  from '../context/AppStateContext';
+import { useColors }    from '../context/ThemeContext';
+import StatusBadge      from '../components/StatusBadge';
+import NotificationCard from '../components/NotificationCard';
+import BottomDock       from '../components/BottomDock';
+import DevToggle        from '../components/DevToggle';
+import {
+  getNotifications, markNotificationRead, deleteNotification,
+  type ApiNotification,
+} from '../services/api';
+import type { NotifCategory } from '../constants/mockData';
 
 type Props = {
   onOpenAnalytics: () => void;
@@ -32,39 +36,64 @@ export default function HomeScreen({ onOpenAnalytics, onOpenDevices, onOpenSetti
   const { bleConnected } = useAppState();
   const C = useColors();
 
-  const [notifications] = useState<MockNotification[]>(MOCK_NOTIFICATIONS);
-  // All notifications start unread; medication/doctor are "actionable"
-  const [unreadIds,  setUnreadIds]  = useState<Set<string>>(() => new Set(MOCK_NOTIFICATIONS.map((n) => n.id)));
+  const [notifications, setNotifications] = useState<ApiNotification[]>([]);
+  const [loading,       setLoading]       = useState(true);
+  const [refreshing,    setRefreshing]    = useState(false);
+  // Local unread/done state layered on top of API isRead
+  const [unreadIds,  setUnreadIds]  = useState<Set<string>>(new Set());
   const [doneIds,    setDoneIds]    = useState<Set<string>>(new Set());
   const [deletedIds, setDeletedIds] = useState<Set<string>>(new Set());
   const [activeFilter, setFilter]   = useState<FilterTab>('all');
 
-  const handleMarkUnread = (id: string) =>
+  const loadNotifications = useCallback(async () => {
+    try {
+      const data = await getNotifications();
+      setNotifications(data);
+      // Mark anything the API says is unread as unread locally
+      setUnreadIds(new Set(data.filter((n) => !n.isRead).map((n) => n._id)));
+    } catch (e) {
+      console.warn('Failed to load notifications:', e);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, []);
+
+  useEffect(() => { loadNotifications(); }, [loadNotifications]);
+
+  const handleMarkUnread = (id: string) => {
     setUnreadIds((prev) => {
       const next = new Set(prev);
-      if (next.has(id)) next.delete(id);  // toggle: if unread → mark read
-      else              next.add(id);     // if read → mark unread
+      if (next.has(id)) {
+        next.delete(id);
+        markNotificationRead(id).catch(console.warn);
+      } else {
+        next.add(id);
+      }
       return next;
     });
+  };
 
   const handleMarkDone = (id: string) => {
     setDoneIds((prev) => new Set([...prev, id]));
     setUnreadIds((prev) => { const s = new Set(prev); s.delete(id); return s; });
+    markNotificationRead(id).catch(console.warn);
   };
 
-  const handleDelete = (id: string) =>
+  const handleDelete = (id: string) => {
     setDeletedIds((prev) => new Set([...prev, id]));
+    deleteNotification(id).catch(console.warn);
+  };
 
   const visible = notifications.filter((n) => {
-    if (deletedIds.has(n.id)) return false;
+    if (deletedIds.has(n._id)) return false;
     if (activeFilter === 'all') return true;
     return n.category === activeFilter;
   });
 
-  // Count unread per category for filter badges
   const counts = notifications.reduce<Record<FilterTab, number>>(
     (acc, n) => {
-      if (!deletedIds.has(n.id) && unreadIds.has(n.id) && !doneIds.has(n.id)) {
+      if (!deletedIds.has(n._id) && unreadIds.has(n._id) && !doneIds.has(n._id)) {
         acc.all += 1;
         acc[n.category] = (acc[n.category] ?? 0) + 1;
       }
@@ -94,6 +123,13 @@ export default function HomeScreen({ onOpenAnalytics, onOpenDevices, onOpenSetti
         style={styles.scroll}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={() => { setRefreshing(true); loadNotifications(); }}
+            tintColor={C.sage}
+          />
+        }
       >
         <StatusBadge bleConnected={bleConnected} />
 
@@ -136,22 +172,29 @@ export default function HomeScreen({ onOpenAnalytics, onOpenDevices, onOpenSetti
         </ScrollView>
 
         {/* Notifications */}
-        {visible.length === 0 && (
+        {loading ? (
+          <ActivityIndicator color={C.sage} style={{ marginTop: 32 }} />
+        ) : visible.length === 0 ? (
           <View style={styles.emptyState}>
             <Text style={[styles.emptyText, { color: C.textMuted }]}>No alerts in this category</Text>
           </View>
+        ) : (
+          visible.map((n) => (
+            <NotificationCard
+              key={n._id}
+              id={n._id}
+              category={n.category}
+              title={n.title}
+              body={n.body}
+              occurredAt={n.occurredAt}
+              isUnread={unreadIds.has(n._id)}
+              isDone={doneIds.has(n._id)}
+              onMarkUnread={handleMarkUnread}
+              onMarkDone={handleMarkDone}
+              onDelete={handleDelete}
+            />
+          ))
         )}
-        {visible.map((n) => (
-          <NotificationCard
-            key={n.id}
-            {...n}
-            isUnread={unreadIds.has(n.id)}
-            isDone={doneIds.has(n.id)}
-            onMarkUnread={handleMarkUnread}
-            onMarkDone={handleMarkDone}
-            onDelete={handleDelete}
-          />
-        ))}
 
         <View style={styles.scrollPad} />
       </ScrollView>
