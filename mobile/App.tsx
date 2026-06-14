@@ -1,12 +1,22 @@
-import React, { useState } from 'react';
-import { Modal, View, Text, TouchableOpacity, StyleSheet, Linking } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { Modal, View, Text, TouchableOpacity, StyleSheet, Linking, Platform } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { AlertTriangle, Phone } from 'lucide-react-native';
+import * as Notifications from 'expo-notifications';
+import * as Device from 'expo-device';
 
 import { ThemeProvider, useColors, useTheme } from './src/context/ThemeContext';
 import { AppStateProvider, useAppState, type Contact } from './src/context/AppStateContext';
-import { sendEmergencyAlert } from './src/services/api';
+import { sendEmergencyAlert, registerPushToken } from './src/services/api';
+
+Notifications.setNotificationHandler({
+  handleNotification: async () => ({
+    shouldShowAlert: true,
+    shouldPlaySound: true,
+    shouldSetBadge:  true,
+  }),
+});
 import HomeScreen      from './src/screens/HomeScreen';
 import AnalyticsScreen from './src/screens/AnalyticsScreen';
 import DevicesScreen   from './src/screens/DevicesScreen';
@@ -118,6 +128,24 @@ function AppContent() {
   const { theme } = useTheme();
   const C = useColors();
   const [view, setView] = useState<ActiveView>('home');
+
+  useEffect(() => {
+    (async () => {
+      if (!Device.isDevice) return;
+      const { status: existing } = await Notifications.getPermissionsAsync();
+      const finalStatus = existing === 'granted'
+        ? existing
+        : (await Notifications.requestPermissionsAsync()).status;
+      if (finalStatus !== 'granted') return;
+      if (Platform.OS === 'android') {
+        await Notifications.setNotificationChannelAsync('default', {
+          name: 'default', importance: Notifications.AndroidImportance.MAX,
+        });
+      }
+      const token = (await Notifications.getExpoPushTokenAsync()).data;
+      registerPushToken(token).catch(console.warn);
+    })();
+  }, []);
 
   const panel = {
     height:            '90%' as const,

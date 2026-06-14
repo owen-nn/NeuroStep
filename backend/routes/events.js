@@ -3,6 +3,7 @@ const router       = express.Router();
 const FreezeEvent  = require('../models/FreezeEvent');
 const FallEvent    = require('../models/FallEvent');
 const Notification = require('../models/Notification');
+const { sendPushToAll } = require('../utils/sendPush');
 
 // POST /api/events/freeze — ESP32 calls this when a freeze is detected
 router.post('/freeze', async (req, res) => {
@@ -13,12 +14,15 @@ router.post('/freeze', async (req, res) => {
 
     // Auto-create a notification so the mobile app sees the event
     const secs = durationMs ? (durationMs / 1000).toFixed(1) : '?';
+    const notifBody = `${secs}s episode — vibration cue delivered`;
     await Notification.create({
       category:   'freeze',
       title:      'Freeze Episode Detected',
-      body:       `${secs}s episode — vibration cue delivered`,
+      body:       notifBody,
       occurredAt: event.occurredAt,
     });
+
+    sendPushToAll('Freeze Episode Detected', notifBody).catch(console.warn);
 
     res.status(201).json(event);
   } catch (err) {
@@ -36,10 +40,11 @@ router.get('/freeze', async (_req, res) => {
   }
 });
 
-// POST /api/events/fall — future feature, accepted but falls are not the focus yet
+// POST /api/events/fall
 router.post('/fall', async (req, res) => {
   try {
     const event = await FallEvent.create(req.body);
+    sendPushToAll('Fall Detected', 'NeuroStep detected a potential fall event. Please check on the patient.').catch(console.warn);
     res.status(201).json(event);
   } catch (err) {
     res.status(500).json({ error: err.message });
