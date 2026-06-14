@@ -1,39 +1,59 @@
-// ============================================================
-//  routes/events.js — freeze-of-gait and fall event endpoints
-//
-//  POST /api/events/freeze  — record a new FOG episode from the sock
-//  GET  /api/events/freeze  — list FOG episodes (with optional date range)
-//  POST /api/events/fall    — record a detected fall
-//  GET  /api/events/fall    — list fall events
-//
-//  Phase 2: swap TODO stubs for real Mongoose queries.
-// ============================================================
+const express      = require('express');
+const router       = express.Router();
+const FreezeEvent  = require('../models/FreezeEvent');
+const FallEvent    = require('../models/FallEvent');
+const Notification = require('../models/Notification');
 
-const express = require('express');
-const router  = express.Router();
-
-// TODO (Phase 2): import FreezeEvent and FallEvent models
-// const FreezeEvent = require('../models/FreezeEvent');
-// const FallEvent   = require('../models/FallEvent');
-
+// POST /api/events/freeze — ESP32 calls this when a freeze is detected
 router.post('/freeze', async (req, res) => {
-  // TODO: validate req.body, save new FreezeEvent to DB
-  res.status(501).json({ message: 'Not implemented yet' });
+  try {
+    const { durationMs, fogConfidence, cueDelivered } = req.body;
+
+    const event = await FreezeEvent.create({ durationMs, fogConfidence, cueDelivered });
+
+    // Auto-create a notification so the mobile app sees the event
+    const secs = durationMs ? (durationMs / 1000).toFixed(1) : '?';
+    await Notification.create({
+      category:   'freeze',
+      title:      'Freeze Episode Detected',
+      body:       `${secs}s episode — vibration cue delivered`,
+      occurredAt: event.occurredAt,
+    });
+
+    res.status(201).json(event);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
-router.get('/freeze', async (req, res) => {
-  // TODO: query FreezeEvent.find() with optional date/userId filters
-  res.status(501).json({ message: 'Not implemented yet' });
+// GET /api/events/freeze — mobile app fetches history for analytics
+router.get('/freeze', async (_req, res) => {
+  try {
+    const events = await FreezeEvent.find().sort({ occurredAt: -1 }).limit(100);
+    res.json(events);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
+// POST /api/events/fall — future feature, accepted but falls are not the focus yet
 router.post('/fall', async (req, res) => {
-  // TODO: validate req.body, save new FallEvent to DB
-  res.status(501).json({ message: 'Not implemented yet' });
+  try {
+    const event = await FallEvent.create(req.body);
+    res.status(201).json(event);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
-router.get('/fall', async (req, res) => {
-  // TODO: query FallEvent.find() with optional filters
-  res.status(501).json({ message: 'Not implemented yet' });
+// GET /api/events/fall
+router.get('/fall', async (_req, res) => {
+  try {
+    const events = await FallEvent.find().sort({ occurredAt: -1 }).limit(100);
+    res.json(events);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 module.exports = router;

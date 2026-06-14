@@ -1,31 +1,41 @@
-// ============================================================
-//  server.js — NeuroStep Express entry point
-//
-//  Phase 2: connects to MongoDB Atlas, mounts route modules.
-//  Phase 1 / local dev: run without a DB — routes return 501 stubs.
-// ============================================================
-
 require('dotenv').config();
 
-const express = require('express');
-const cors    = require('cors');
+const express  = require('express');
+const cors     = require('cors');
+const mongoose = require('mongoose');
 
-// TODO (Phase 2): uncomment and configure mongoose connection
-// const mongoose = require('mongoose');
-// mongoose.connect(process.env.MONGODB_URI);
-
-const eventsRouter      = require('./routes/events');
-const medicationsRouter = require('./routes/medications');
+const eventsRouter        = require('./routes/events');
+const medicationsRouter   = require('./routes/medications');
+const notificationsRouter = require('./routes/notifications');
 
 const app  = express();
 const PORT = process.env.PORT || 3000;
 
+// ── Database ─────────────────────────────────────────────────────────────────
+
+mongoose
+  .connect(process.env.MONGODB_URI)
+  .then(() => console.log('MongoDB connected'))
+  .catch((err) => console.error('MongoDB connection error:', err));
+
+// ── Middleware ────────────────────────────────────────────────────────────────
+
 app.use(cors());
 app.use(express.json());
 
+// ── Routes ────────────────────────────────────────────────────────────────────
+
 app.get('/health', (_req, res) => res.json({ status: 'ok' }));
 
-app.use('/api/events',      eventsRouter);
-app.use('/api/medications', medicationsRouter);
+app.use('/api/events',        eventsRouter);
+app.use('/api/medications',   medicationsRouter);
+app.use('/api/notifications', notificationsRouter);
+
+// ── Error handler ─────────────────────────────────────────────────────────────
+
+app.use((err, _req, res, _next) => {
+  console.error(err.stack);
+  res.status(500).json({ error: err.message });
+});
 
 app.listen(PORT, () => console.log(`NeuroStep backend listening on :${PORT}`));
