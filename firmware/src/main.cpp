@@ -7,12 +7,19 @@
 
 #include <Arduino.h>
 #include <Wire.h>
+#include <WiFi.h>
+#include <HTTPClient.h>
+#include "secrets.h"
 #include "TensorFlowLite_ESP32.h"
 #include "tensorflow/lite/micro/all_ops_resolver.h"
 #include "tensorflow/lite/micro/micro_interpreter.h"
 #include "tensorflow/lite/micro/micro_error_reporter.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "fog_model.h"
+
+// ── WiFi + backend ────────────────────────────────────────────
+// credentials live in secrets.h (gitignored)
+const char* BACKEND_URL = "http://149.248.52.166:3000/api/events/freeze";
 
 // pins
 #define MOTOR_PIN      13
@@ -135,8 +142,38 @@ void calibrate() {
   }
 }
 
+// connect to WiFi — non-blocking after 10s timeout, runs offline if fails
+void connect_wifi() {
+  Serial.print("connecting to WiFi");
+  WiFi.begin(WIFI_SSID, WIFI_PASS);
+  int tries = 0;
+  while (WiFi.status() != WL_CONNECTED && tries < 20) {
+    delay(500);
+    Serial.print(".");
+    tries++;
+  }
+  if (WiFi.status() == WL_CONNECTED) {
+    Serial.printf("\nWiFi connected: %s\n", WiFi.localIP().toString().c_str());
+  } else {
+    Serial.println("\nWiFi failed — running offline, events won't be posted");
+  }
+}
+
+// POST freeze event to backend — fire and forget, won't block the cue
+void post_freeze_event(float fogConfidence) {
+  if (WiFi.status() != WL_CONNECTED) return;
+  HTTPClient http;
+  http.begin(BACKEND_URL);
+  http.addHeader("Content-Type", "application/json");
+  String body = "{\"durationMs\":10000,\"fogConfidence\":"
+                + String(fogConfidence, 2) + ",\"cueDelivered\":true}";
+  int code = http.POST(body);
+  Serial.printf("posted freeze event → HTTP %d\n", code);
+  http.end();
+}
+
 float run_inference();
-void  start_alert();
+void  start_alert(float fogConfidence);
 void  update_alert();
 
 // ============================================================
@@ -160,6 +197,7 @@ void setup() {
   Serial.println("mpu ready");
 
   calibrate();
+  connect_wifi();
 
   tf_model = tflite::GetModel(fog_model);
   if (tf_model->version() != TFLITE_SCHEMA_VERSION) {
@@ -220,7 +258,7 @@ void loop() {
     avg >= FOG_THRESHOLD ? "<<< FOG >>>" : "ok");
 
   if (avg >= FOG_THRESHOLD && !alerting) {
-    start_alert();
+    start_alert(avg);
   }
 }
 
@@ -249,10 +287,11 @@ float run_inference() {
 }
 
 // ============================================================
-void start_alert() {
+void start_alert(float fogConfidence) {
   Serial.println(">>> FOG confirmed — 10s rhythmic cue at 1Hz");
   alerting       = true;
   alert_start_ms = millis();
+  post_freeze_event(fogConfidence);
 }
 
 // rhythmic 1Hz pulse for 10 seconds

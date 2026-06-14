@@ -5,6 +5,7 @@ import { StatusBar } from 'expo-status-bar';
 import { AlertTriangle, Phone } from 'lucide-react-native';
 import * as Notifications from 'expo-notifications';
 import * as Device from 'expo-device';
+import Constants from 'expo-constants';
 
 import { ThemeProvider, useColors, useTheme } from './src/context/ThemeContext';
 import { AppStateProvider, useAppState, type Contact } from './src/context/AppStateContext';
@@ -142,7 +143,8 @@ function AppContent() {
           name: 'default', importance: Notifications.AndroidImportance.MAX,
         });
       }
-      const token = (await Notifications.getExpoPushTokenAsync()).data;
+      const projectId = Constants.expoConfig?.extra?.eas?.projectId;
+      const token = (await Notifications.getExpoPushTokenAsync({ projectId })).data;
       registerPushToken(token).catch(console.warn);
     })();
   }, []);
