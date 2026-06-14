@@ -9,7 +9,8 @@ import Constants from 'expo-constants';
 
 import { ThemeProvider, useColors, useTheme } from './src/context/ThemeContext';
 import { AppStateProvider, useAppState, type Contact } from './src/context/AppStateContext';
-import { sendEmergencyAlert, registerPushToken } from './src/services/api';
+import { sendEmergencyAlert, registerPushToken, postFreezeEvent } from './src/services/api';
+import { useBLE } from './src/hooks/useBLE';
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
@@ -123,6 +124,23 @@ function FreezeAlertModal() {
   );
 }
 
+// ── BLE bridge — lives inside AppStateProvider so it can update context ─────
+
+function BLEBridge() {
+  const { setSystemState, setBleConnected } = useAppState();
+
+  useBLE(
+    (confidence) => {
+      setSystemState('freeze');
+      postFreezeEvent({ durationMs: 10000, fogConfidence: confidence, cueDelivered: true })
+        .catch(console.warn);
+    },
+    setBleConnected
+  );
+
+  return null;
+}
+
 // ── Main app content ────────────────────────────────────────────────────────
 
 function AppContent() {
@@ -159,6 +177,7 @@ function AppContent() {
 
   return (
     <AppStateProvider>
+      <BLEBridge />
       <SafeAreaProvider>
         <StatusBar style={theme === 'dark' ? 'light' : 'dark'} />
 

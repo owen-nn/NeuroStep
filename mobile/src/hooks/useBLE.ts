@@ -1,68 +1,101 @@
-// ============================================================
-//  useBLE.ts — React hook for Bluetooth Low Energy device management
-//
-//  Phase 3 implementation plan:
-//    1. Use react-native-ble-plx (BleManager) to scan for peripherals
-//       advertising the NeuroStep service UUID.
-//    2. On connect: subscribe to the IMU characteristic (notify).
-//    3. Parse incoming 12-byte packets: [ax:float32, ay:float32, az:float32]
-//    4. Expose `fogActive` flag driven by on-device inference result
-//       (the sock sends a 1-byte flag on a second characteristic).
-//    5. Emit fall alerts to the HomeScreen via a callback.
-//
-//  Returns:
-//    devices   — list of discovered BLE peripherals
-//    scanning  — true while actively scanning
-//    connected — true when a sock is paired and streaming
-//    fogActive — true when the sock reports an active freeze event
-//    startScan — trigger a 10-second BLE scan
-//    connect   — connect to a specific peripheral by ID
-//    disconnect— cleanly disconnect
-// ============================================================
+import { useEffect, useRef } from 'react';
+import { BleManager, type Device, type Subscription } from 'react-native-ble-plx';
 
-import { useState, useCallback } from 'react';
+const SERVICE_UUID     = '4fafc201-1fb5-459e-8fcc-c5c9c331914b';
+const FREEZE_CHAR_UUID = 'beb5483e-36e1-4688-b7f5-ea07361b26a8';
+const DEVICE_NAME      = 'NeuroStep';
+const RECONNECT_DELAY  = 3000;
 
-// TODO (Phase 3): import BleManager from 'react-native-ble-plx'
-// const manager = new BleManager();
+export function useBLE(
+  onFreezeDetected: (confidence: number) => void,
+  onConnectionChange: (connected: boolean) => void
+) {
+  // Refs keep async closures pointing at the latest callbacks without re-running the effect
+  const onFreezeRef     = useRef(onFreezeDetected);
+  const onConnectRef    = useRef(onConnectionChange);
+  const reconnectingRef = useRef(false);
 
-export interface BLEDevice {
-  id:   string;
-  name: string | null;
-  rssi: number | null;
-}
+  useEffect(() => { onFreezeRef.current  = onFreezeDetected; }, [onFreezeDetected]);
+  useEffect(() => { onConnectRef.current = onConnectionChange; }, [onConnectionChange]);
 
-export interface UseBLEReturn {
-  devices:    BLEDevice[];
-  scanning:   boolean;
-  connected:  boolean;
-  fogActive:  boolean;
-  startScan:  () => void;
-  connect:    (deviceId: string) => Promise<void>;
-  disconnect: () => void;
-}
+  useEffect(() => {
+    const manager = new BleManager();
+    let destroyed = false;
+    let disconnectSub: Subscription | null = null;
 
-export default function useBLE(): UseBLEReturn {
-  const [devices,   setDevices]   = useState<BLEDevice[]>([]);
-  const [scanning,  setScanning]  = useState(false);
-  const [connected, setConnected] = useState(false);
-  const [fogActive, setFogActive] = useState(false);
+    function startScan() {
+      if (destroyed) return;
+      console.log('[BLE] scanning for', DEVICE_NAME);
 
-  const startScan = useCallback(() => {
-    // TODO (Phase 3): manager.startDeviceScan([NEUROSTEP_SERVICE_UUID], null, callback)
-    setScanning(true);
-    console.warn('useBLE: BLE scanning not yet implemented (Phase 3)');
+      manager.startDeviceScan(null, { allowDuplicates: false }, async (error, device) => {
+        if (error) {
+          console.warn('[BLE] scan error:', error.message);
+          return;
+        }
+        if (device?.name !== DEVICE_NAME) return;
+
+        manager.stopDeviceScan();
+        await connectDevice(device);
+      });
+    }
+
+    async function connectDevice(device: Device) {
+      if (destroyed) return;
+      try {
+        console.log('[BLE] connecting...');
+        const d = await device.connect();
+        await d.discoverAllServicesAndCharacteristics();
+        console.log('[BLE] connected');
+        reconnectingRef.current = false;
+        onConnectRef.current(true);
+
+        disconnectSub?.remove();
+        disconnectSub = manager.onDeviceDisconnected(d.id, () => {
+          if (destroyed) return;
+          console.log('[BLE] disconnected');
+          onConnectRef.current(false);
+          if (!reconnectingRef.current) {
+            reconnectingRef.current = true;
+            setTimeout(startScan, RECONNECT_DELAY);
+          }
+        });
+
+        // Subscribe to freeze notifications — firmware sends float confidence as ASCII
+        d.monitorCharacteristicForService(
+          SERVICE_UUID,
+          FREEZE_CHAR_UUID,
+          (_err, char) => {
+            if (!char?.value) return;
+            const text = atob(char.value);
+            const confidence = parseFloat(text);
+            if (!isNaN(confidence)) {
+              console.log('[BLE] freeze event, confidence =', confidence);
+              onFreezeRef.current(confidence);
+            }
+          }
+        );
+      } catch (err: any) {
+        console.warn('[BLE] connect error:', err.message);
+        if (!destroyed && !reconnectingRef.current) {
+          reconnectingRef.current = true;
+          setTimeout(startScan, RECONNECT_DELAY);
+        }
+      }
+    }
+
+    const stateSub = manager.onStateChange((state) => {
+      if (state === 'PoweredOn') {
+        stateSub.remove();
+        startScan();
+      }
+    }, true);
+
+    return () => {
+      destroyed = true;
+      stateSub.remove();
+      disconnectSub?.remove();
+      manager.stopDeviceScan();
+      manager.destroy();
+    };
   }, []);
-
-  const connect = useCallback(async (_deviceId: string) => {
-    // TODO (Phase 3): connect, discover services, subscribe to characteristics
-    console.warn('useBLE: connect not yet implemented (Phase 3)');
-  }, []);
-
-  const disconnect = useCallback(() => {
-    // TODO (Phase 3): manager.cancelDeviceConnection(connectedDeviceId)
-    setConnected(false);
-    setFogActive(false);
-  }, []);
-
-  return { devices, scanning, connected, fogActive, startScan, connect, disconnect };
 }

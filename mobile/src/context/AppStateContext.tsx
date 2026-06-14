@@ -27,14 +27,16 @@ interface AppStateValue {
   avgFreezeDuration: number;
   contacts:          Contact[];
   setSystemState:    (s: SystemState) => void;
+  setBleConnected:   (v: boolean) => void;
   setContacts:       React.Dispatch<React.SetStateAction<Contact[]>>;
 }
 
 const Ctx = createContext<AppStateValue | null>(null);
 
 export function AppStateProvider({ children }: { children: React.ReactNode }) {
-  const [systemState, setSystemState] = useState<SystemState>('normal');
-  const [contacts,    setContacts]    = useState<Contact[]>(DEFAULT_CONTACTS);
+  const [systemState,  setSystemState]  = useState<SystemState>('normal');
+  const [bleConnected, setBleConnected] = useState(false);
+  const [contacts,     setContacts]     = useState<Contact[]>(DEFAULT_CONTACTS);
 
   // Load persisted contacts on mount
   useEffect(() => {
@@ -51,12 +53,13 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
   return (
     <Ctx.Provider value={{
       systemState,
-      bleConnected:      MOCK_STATS.bleConnected,
+      bleConnected,
       ankleBattery:      MOCK_STATS.ankleBattery,
       hubBattery:        MOCK_STATS.hubBattery,
       avgFreezeDuration: MOCK_STATS.avgFreezeDuration,
       contacts,
       setSystemState,
+      setBleConnected,
       setContacts,
     }}>
       {children}

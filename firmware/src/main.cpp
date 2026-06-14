@@ -1,15 +1,16 @@
 // ============================================================
 //  NeuroStep — Freezing of Gait detector
 //  ESP32-S3 + MPU6050 + vibration motor
-//  Runs a CNN locally to detect FOG and gives rhythmic
-//  vibration cueing to help the wearer resume walking.
+//  Runs a CNN locally to detect FOG, delivers rhythmic
+//  vibration cueing, and notifies the mobile app via BLE.
 // ============================================================
 
 #include <Arduino.h>
 #include <Wire.h>
-#include <WiFi.h>
-#include <HTTPClient.h>
-#include "secrets.h"
+#include <BLEDevice.h>
+#include <BLEServer.h>
+#include <BLEUtils.h>
+#include <BLE2902.h>
 #include "TensorFlowLite_ESP32.h"
 #include "tensorflow/lite/micro/all_ops_resolver.h"
 #include "tensorflow/lite/micro/micro_interpreter.h"
@@ -17,9 +18,9 @@
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "fog_model.h"
 
-// ── WiFi + backend ────────────────────────────────────────────
-// credentials live in secrets.h (gitignored)
-const char* BACKEND_URL = "http://149.248.52.166:3000/api/events/freeze";
+// ── BLE UUIDs ─────────────────────────────────────────────────
+#define SERVICE_UUID     "4fafc201-1fb5-459e-8fcc-c5c9c331914b"
+#define FREEZE_CHAR_UUID "beb5483e-36e1-4688-b7f5-ea07361b26a8"
 
 // pins
 #define MOTOR_PIN      13
@@ -32,16 +33,14 @@ const char* BACKEND_URL = "http://149.248.52.166:3000/api/events/freeze";
 #define SAMPLE_RATE_HZ   64
 #define WINDOW_SIZE      64
 #define NUM_CHANNELS      3
-#define FOG_THRESHOLD  0.70f   // average confidence needed to alert
-#define MAX_ACCEL      3000.0f // reject glitch spikes above this
-#define PROB_HISTORY      8    // rolling average length (smooths spikes)
+#define FOG_THRESHOLD  0.70f
+#define MAX_ACCEL      3000.0f
+#define PROB_HISTORY      8
 
-// vibration cueing (research-backed 1Hz rhythm)
-// rhythmic cueing at walking cadence helps Parkinson's patients
-// break out of a freeze: 400ms on / 600ms off = 1Hz, 10s total
+// vibration cueing (1Hz rhythm, research-backed)
 #define ALERT_DURATION_MS  10000
-#define CUE_PERIOD_MS       1000   // full on+off cycle = 1Hz
-#define CUE_ON_MS            400    // motor on portion of each cycle
+#define CUE_PERIOD_MS       1000
+#define CUE_ON_MS            400
 
 // DAPHNET resting reference (ankle, standing still)
 #define REF_AX   50.0f
@@ -77,6 +76,22 @@ unsigned long last_sample_ms = 0;
 bool alerting = false;
 unsigned long alert_start_ms = 0;
 
+// BLE state
+BLECharacteristic* pFreezeChar = nullptr;
+bool deviceConnected = false;
+
+class ServerCallbacks : public BLEServerCallbacks {
+  void onConnect(BLEServer* pServer) override {
+    deviceConnected = true;
+    Serial.println("BLE client connected");
+  }
+  void onDisconnect(BLEServer* pServer) override {
+    deviceConnected = false;
+    Serial.println("BLE client disconnected — restarting advertising");
+    BLEDevice::startAdvertising();
+  }
+};
+
 // MPU6050 I2C helpers
 void writeReg(byte reg, byte val) {
   Wire.beginTransmission(MPU_ADDR);
@@ -85,9 +100,6 @@ void writeReg(byte reg, byte val) {
   Wire.endTransmission();
 }
 
-// burst-read all 3 axes in one transaction
-// signs chosen so output matches DAPHNET ankle when still:
-//   ax ~ +50, ay ~ +1024, az ~ +175
 void readAccel(float &ax, float &ay, float &az) {
   Wire.beginTransmission(MPU_ADDR);
   Wire.write(0x3B);
@@ -99,11 +111,10 @@ void readAccel(float &ax, float &ay, float &az) {
   int16_t raw_az = (Wire.read() << 8) | Wire.read();
 
   ax =  raw_ay / 8192.0f * 1000.0f;
-  ay = -raw_ax / 8192.0f * 1000.0f;  // flipped so ay is positive
+  ay = -raw_ax / 8192.0f * 1000.0f;
   az = -raw_az / 8192.0f * 1000.0f;
 }
 
-// reject dropouts and glitch spikes
 bool validReading(float ax, float ay, float az) {
   if (abs(ay) < 10.0f) return false;
   if (abs(ax) > MAX_ACCEL) return false;
@@ -112,7 +123,6 @@ bool validReading(float ax, float ay, float az) {
   return true;
 }
 
-// collect resting samples, shift MEAN to match this sensor
 void calibrate() {
   Serial.println("calibrating — stand still for 2 seconds...");
   float sum[3] = {0, 0, 0};
@@ -142,34 +152,16 @@ void calibrate() {
   }
 }
 
-// connect to WiFi — non-blocking after 10s timeout, runs offline if fails
-void connect_wifi() {
-  Serial.print("connecting to WiFi");
-  WiFi.begin(WIFI_SSID, WIFI_PASS);
-  int tries = 0;
-  while (WiFi.status() != WL_CONNECTED && tries < 20) {
-    delay(500);
-    Serial.print(".");
-    tries++;
+// send BLE notification with fog confidence value
+void notify_freeze(float fogConfidence) {
+  if (!deviceConnected || !pFreezeChar) {
+    Serial.println("BLE: no client connected, skipping notify");
+    return;
   }
-  if (WiFi.status() == WL_CONNECTED) {
-    Serial.printf("\nWiFi connected: %s\n", WiFi.localIP().toString().c_str());
-  } else {
-    Serial.println("\nWiFi failed — running offline, events won't be posted");
-  }
-}
-
-// POST freeze event to backend — fire and forget, won't block the cue
-void post_freeze_event(float fogConfidence) {
-  if (WiFi.status() != WL_CONNECTED) return;
-  HTTPClient http;
-  http.begin(BACKEND_URL);
-  http.addHeader("Content-Type", "application/json");
-  String body = "{\"durationMs\":10000,\"fogConfidence\":"
-                + String(fogConfidence, 2) + ",\"cueDelivered\":true}";
-  int code = http.POST(body);
-  Serial.printf("posted freeze event → HTTP %d\n", code);
-  http.end();
+  String val = String(fogConfidence, 2);
+  pFreezeChar->setValue(val.c_str());
+  pFreezeChar->notify();
+  Serial.printf("BLE notified: fog=%.2f\n", fogConfidence);
 }
 
 float run_inference();
@@ -190,15 +182,34 @@ void setup() {
   Wire.begin(SDA_PIN, SCL_PIN);
   delay(500);
 
-  writeReg(0x6B, 0x80); delay(200);  // reset
-  writeReg(0x6B, 0x00); delay(100);  // wake
-  writeReg(0x1C, 0x08); delay(10);   // +-4G range
-  writeReg(0x1A, 0x04); delay(10);   // low pass filter
+  writeReg(0x6B, 0x80); delay(200);
+  writeReg(0x6B, 0x00); delay(100);
+  writeReg(0x1C, 0x08); delay(10);
+  writeReg(0x1A, 0x04); delay(10);
   Serial.println("mpu ready");
 
   calibrate();
-  connect_wifi();
 
+  // ── BLE setup ──────────────────────────────────────────────
+  BLEDevice::init("NeuroStep");
+  BLEServer* pServer = BLEDevice::createServer();
+  pServer->setCallbacks(new ServerCallbacks());
+
+  BLEService* pService = pServer->createService(SERVICE_UUID);
+  pFreezeChar = pService->createCharacteristic(
+    FREEZE_CHAR_UUID,
+    BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_NOTIFY
+  );
+  pFreezeChar->addDescriptor(new BLE2902());
+  pService->start();
+
+  BLEAdvertising* pAdvertising = BLEDevice::getAdvertising();
+  pAdvertising->addServiceUUID(SERVICE_UUID);
+  pAdvertising->setScanResponse(true);
+  BLEDevice::startAdvertising();
+  Serial.println("BLE advertising as 'NeuroStep'");
+
+  // ── TFLite setup ───────────────────────────────────────────
   tf_model = tflite::GetModel(fog_model);
   if (tf_model->version() != TFLITE_SCHEMA_VERSION) {
     Serial.println("tflite version mismatch");
@@ -210,7 +221,7 @@ void setup() {
   interpreter = &static_interpreter;
 
   if (interpreter->AllocateTensors() != kTfLiteOk) {
-    Serial.println("tensor allocation failed — increase arena size");
+    Serial.println("tensor allocation failed");
     while (1) {}
   }
 
@@ -224,7 +235,6 @@ void setup() {
 void loop() {
   unsigned long now = millis();
 
-  // keep the rhythmic cue running smoothly
   update_alert();
 
   if (now - last_sample_ms < (1000 / SAMPLE_RATE_HZ)) return;
@@ -232,7 +242,6 @@ void loop() {
 
   float ax, ay, az;
   readAccel(ax, ay, az);
-
   if (!validReading(ax, ay, az)) return;
 
   window_buf[buf_idx][0] = ax;
@@ -245,14 +254,12 @@ void loop() {
 
   float fog_prob = run_inference();
 
-  // rolling average smooths single-window spikes
   prob_history[prob_idx] = fog_prob;
   prob_idx = (prob_idx + 1) % PROB_HISTORY;
   float avg = 0;
   for (int i = 0; i < PROB_HISTORY; i++) avg += prob_history[i];
   avg /= PROB_HISTORY;
 
-  // print everything on one line, once per inference (keeps serial fast)
   Serial.printf("raw: ax=%.1f ay=%.1f az=%.1f  fog: %.2f  avg: %.2f  %s\n",
     ax, ay, az, fog_prob, avg,
     avg >= FOG_THRESHOLD ? "<<< FOG >>>" : "ok");
@@ -291,16 +298,13 @@ void start_alert(float fogConfidence) {
   Serial.println(">>> FOG confirmed — 10s rhythmic cue at 1Hz");
   alerting       = true;
   alert_start_ms = millis();
-  post_freeze_event(fogConfidence);
+  notify_freeze(fogConfidence);
 }
 
-// rhythmic 1Hz pulse for 10 seconds
-// computed from elapsed time so it can never get out of sync
 void update_alert() {
   if (!alerting) return;
   unsigned long elapsed = millis() - alert_start_ms;
 
-  // stop after 10 seconds
   if (elapsed >= ALERT_DURATION_MS) {
     alerting = false;
     digitalWrite(MOTOR_PIN, LOW);
@@ -310,10 +314,8 @@ void update_alert() {
     return;
   }
 
-  // where are we within the current 1-second cycle?
   unsigned long phase = elapsed % CUE_PERIOD_MS;
   bool should_be_on = (phase < CUE_ON_MS);
-
   digitalWrite(MOTOR_PIN, should_be_on ? HIGH : LOW);
   digitalWrite(LED_PIN,   should_be_on ? HIGH : LOW);
 }
