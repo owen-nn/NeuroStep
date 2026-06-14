@@ -44,6 +44,7 @@ export default function HomeScreen({ onOpenAnalytics, onOpenDevices, onOpenSetti
   const [doneIds,    setDoneIds]    = useState<Set<string>>(new Set());
   const [deletedIds, setDeletedIds] = useState<Set<string>>(new Set());
   const [activeFilter, setFilter]   = useState<FilterTab>('all');
+  const [expandedId,   setExpandedId] = useState<string | null>(null);
 
   const loadNotifications = useCallback(async () => {
     try {
@@ -189,6 +190,8 @@ export default function HomeScreen({ onOpenAnalytics, onOpenDevices, onOpenSetti
               occurredAt={n.occurredAt}
               isUnread={unreadIds.has(n._id)}
               isDone={doneIds.has(n._id)}
+              isExpanded={expandedId === n._id}
+              onExpand={setExpandedId}
               onMarkUnread={handleMarkUnread}
               onMarkDone={handleMarkDone}
               onDelete={handleDelete}

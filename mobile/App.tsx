@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Modal, View, Text, TouchableOpacity, StyleSheet, Linking } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
-import { AlertTriangle, Phone, MessageSquare, ChevronLeft } from 'lucide-react-native';
+import { AlertTriangle, Phone } from 'lucide-react-native';
 
 import { ThemeProvider, useColors, useTheme } from './src/context/ThemeContext';
 import { AppStateProvider, useAppState, type Contact } from './src/context/AppStateContext';
@@ -21,37 +21,6 @@ function dialPhone(phone: string) {
   Linking.openURL(`tel:${cleaned}`);
 }
 
-function textPhone(phone: string) {
-  const cleaned = phone.replace(/[^\d+]/g, '');
-  Linking.openURL(`sms:${cleaned}`);
-}
-
-function ContactRow({ contact, C }: { contact: Contact; C: ReturnType<typeof useColors> }) {
-  return (
-    <View style={[fa.contactRow, { borderColor: C.border }]}>
-      <View style={fa.contactInfo}>
-        <Text style={[fa.contactName, { color: C.textPrimary }]}>{contact.name}</Text>
-        <Text style={[fa.contactRole, { color: C.textSecondary }]}>{contact.role}</Text>
-      </View>
-      <TouchableOpacity
-        style={[fa.contactBtn, { backgroundColor: C.sage }]}
-        onPress={() => dialPhone(contact.phone)}
-        activeOpacity={0.8}
-      >
-        <Phone size={18} color="#FFFFFF" />
-        <Text style={fa.contactBtnLabel}>Call</Text>
-      </TouchableOpacity>
-      <TouchableOpacity
-        style={[fa.contactBtn, { backgroundColor: C.teal }]}
-        onPress={() => textPhone(contact.phone)}
-        activeOpacity={0.8}
-      >
-        <MessageSquare size={18} color="#FFFFFF" />
-        <Text style={fa.contactBtnLabel}>Text</Text>
-      </TouchableOpacity>
-    </View>
-  );
-}
 
 function FreezeAlertModal() {
   const { systemState, setSystemState, contacts } = useAppState();
@@ -72,22 +41,29 @@ function FreezeAlertModal() {
 
           {showContacts ? (
             <>
-              <Text style={[fa.title, { color: C.textPrimary }]}>Get Help</Text>
+              <Text style={[fa.title, { color: C.textPrimary }]}>Help is on the way</Text>
               <Text style={[fa.desc, { color: C.textSecondary }]}>
-                Choose a contact to call or text now.
+                SMS sent to your emergency contacts. You can also call them directly:
               </Text>
 
               {contacts.map((c) => (
-                <ContactRow key={c.id} contact={c} C={C} />
+                <TouchableOpacity
+                  key={c.id}
+                  style={[fa.callBtn, { backgroundColor: C.sage }]}
+                  onPress={() => dialPhone(c.phone)}
+                  activeOpacity={0.8}
+                >
+                  <Phone size={18} color="#FFFFFF" />
+                  <Text style={fa.callBtnLabel}>Call {c.name}</Text>
+                </TouchableOpacity>
               ))}
 
               <TouchableOpacity
-                style={[fa.backBtn, { borderColor: C.border }]}
-                onPress={() => setShowContacts(false)}
+                style={[fa.primaryBtn, { backgroundColor: C.surface, borderWidth: 1, borderColor: C.border }]}
+                onPress={dismiss}
                 activeOpacity={0.8}
               >
-                <ChevronLeft size={18} color={C.textSecondary} />
-                <Text style={[fa.backBtnLabel, { color: C.textSecondary }]}>Back</Text>
+                <Text style={[fa.primaryBtnLabel, { color: C.textPrimary }]}>I'm Fine</Text>
               </TouchableOpacity>
             </>
           ) : (
@@ -263,6 +239,17 @@ const fa = StyleSheet.create({
     fontSize: 16,
     fontWeight: '700',
   },
+
+  callBtn: {
+    width: '100%',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+    paddingVertical: 16,
+    borderRadius: 14,
+  },
+  callBtnLabel: { color: '#FFFFFF', fontSize: 16, fontWeight: '700' },
 
   contactRow: {
     width: '100%',

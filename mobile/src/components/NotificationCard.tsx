@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { Pill, Snowflake, Stethoscope, Radio, Check } from 'lucide-react-native';
 import { useColors } from '../context/ThemeContext';
@@ -14,6 +14,8 @@ type Props = {
   occurredAt:   string;
   isUnread:     boolean;
   isDone:       boolean;
+  isExpanded:   boolean;
+  onExpand:     (id: string | null) => void;
   onMarkUnread: (id: string) => void;
   onMarkDone:   (id: string) => void;
   onDelete:     (id: string) => void;
@@ -40,10 +42,9 @@ function relativeTime(iso: string): string {
 
 export default function NotificationCard({
   id, category, title, body, occurredAt,
-  isUnread, isDone, onMarkUnread, onMarkDone, onDelete,
+  isUnread, isDone, isExpanded, onExpand, onMarkUnread, onMarkDone, onDelete,
 }: Props) {
   const C = useColors();
-  const [expanded, setExpanded] = useState(false);
 
   const ACCENT: Record<NotifCategory, string> = {
     medication: C.amber,
@@ -56,9 +57,8 @@ export default function NotificationCard({
   const canMarkDone = ACTIONABLE.includes(category);
 
   const handleTap = () => {
-    setExpanded((v) => !v);
-    // Auto-mark as read when first opened
-    if (isUnread) onMarkUnread(id); // we re-use onMarkUnread as the toggle; caller decides
+    onExpand(isExpanded ? null : id);
+    if (isUnread) onMarkUnread(id);
   };
 
   return (
@@ -85,7 +85,7 @@ export default function NotificationCard({
         {/* Content */}
         <View style={s.content}>
           <View style={s.titleRow}>
-            <Text style={[s.title, { color: C.textPrimary }]} numberOfLines={expanded ? undefined : 1}>
+            <Text style={[s.title, { color: C.textPrimary }]} numberOfLines={isExpanded ? undefined : 1}>
               {title}
             </Text>
             {isUnread && !isDone && (
@@ -93,12 +93,12 @@ export default function NotificationCard({
             )}
           </View>
           <Text style={[s.time, { color: C.textMuted }]}>{relativeTime(occurredAt)}</Text>
-          {expanded && <Text style={[s.body, { color: C.textSecondary }]}>{body}</Text>}
+          {isExpanded && <Text style={[s.body, { color: C.textSecondary }]}>{body}</Text>}
         </View>
       </View>
 
-      {/* Action buttons — shown when expanded */}
-      {expanded && (
+      {/* Action buttons — shown when isExpanded */}
+      {isExpanded && (
         <View style={[s.actions, { borderTopColor: C.separator }]}>
           {canMarkDone && !isDone && (
             <TouchableOpacity
