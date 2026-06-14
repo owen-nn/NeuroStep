@@ -53,6 +53,20 @@ export async function deleteNotification(id: string): Promise<void> {
   await fetch(`${BASE_URL}/api/notifications/${id}`, { method: 'DELETE' });
 }
 
+// ── Emergency alerts ───────────────────────────────────────────────────────────
+
+export async function sendEmergencyAlert(
+  eventType: 'freeze' | 'fall',
+  contacts: { name: string; phone: string }[]
+): Promise<void> {
+  if (USE_MOCK_DATA) return;
+  await fetch(`${BASE_URL}/api/emergency/alert`, {
+    method:  'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body:    JSON.stringify({ eventType, contacts }),
+  });
+}
+
 // ── Freeze / fall events ───────────────────────────────────────────────────────
 
 export async function getFreezeEvents(): Promise<ApiFreezeEvent[]> {

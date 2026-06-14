@@ -7,6 +7,7 @@ const mongoose = require('mongoose');
 const eventsRouter        = require('./routes/events');
 const medicationsRouter   = require('./routes/medications');
 const notificationsRouter = require('./routes/notifications');
+const emergencyRouter     = require('./routes/emergency');
 
 const app  = express();
 const PORT = process.env.PORT || 3000;
@@ -30,6 +31,7 @@ app.get('/health', (_req, res) => res.json({ status: 'ok' }));
 app.use('/api/events',        eventsRouter);
 app.use('/api/medications',   medicationsRouter);
 app.use('/api/notifications', notificationsRouter);
+app.use('/api/emergency',     emergencyRouter);
 
 // ── Error handler ─────────────────────────────────────────────────────────────
 

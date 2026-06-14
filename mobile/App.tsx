@@ -6,6 +6,7 @@ import { AlertTriangle, Phone, MessageSquare, ChevronLeft } from 'lucide-react-n
 
 import { ThemeProvider, useColors, useTheme } from './src/context/ThemeContext';
 import { AppStateProvider, useAppState, type Contact } from './src/context/AppStateContext';
+import { sendEmergencyAlert } from './src/services/api';
 import HomeScreen      from './src/screens/HomeScreen';
 import AnalyticsScreen from './src/screens/AnalyticsScreen';
 import DevicesScreen   from './src/screens/DevicesScreen';
@@ -115,7 +116,13 @@ function FreezeAlertModal() {
 
               <TouchableOpacity
                 style={[fa.secondaryBtn, { backgroundColor: C.clay }]}
-                onPress={() => setShowContacts(true)}
+                onPress={() => {
+                  setShowContacts(true);
+                  sendEmergencyAlert(
+                    isFreeze ? 'freeze' : 'fall',
+                    contacts.map((c) => ({ name: c.name, phone: c.phone }))
+                  ).catch(console.warn);
+                }}
                 activeOpacity={0.8}
               >
                 <Text style={fa.secondaryBtnLabel}>Get Help</Text>
